@@ -1338,7 +1338,10 @@ struct SettingsView: View {
         // 选项只列设备**自报**支持的模式：自报不支持「按一次说话」时，这个选项根本不出现。
         let capabilities = model.selectedRemoteVoiceCapabilities
         let offeredModes = ChromecastVoiceMode.allCases.filter { mode in
-            mode != .toggle || capabilities.supportsToggleVoiceRecording
+            mode != .toggle || (
+                ChromecastFeatureIntegration.supportsToggleVoiceGesture &&
+                    capabilities.supportsToggleVoiceRecording
+            )
         }
         return VStack(alignment: .leading, spacing: 10) {
             Text("chromecast.mode.title")
@@ -6130,7 +6133,6 @@ struct SettingsView: View {
             PageHeader(title: localization.text("statistics.page.title"))
         } content: {
             VStack(spacing: 14) {
-                sharePanel(for: .statistics)
                 statisticsSummaryGrid
                 StatisticsColumnsLayout {
                     statisticsRankingPanel
@@ -6542,9 +6544,6 @@ struct SettingsView: View {
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 8) {
-                    Button("diagnostics.logs.send") { model.sendDiagnosticLogs() }
-                        .compatibilityButtonStyle(.prominent)
-                        .disabled(model.isSendingDiagnosticLogs)
                     Button("diagnostics.logs.show_in_finder") { model.openLogFolder() }
                         .compatibilityButtonStyle(.standard)
                     Button("diagnostics.logs.copy_summary") { copySettingsDiagnosticSummary() }
@@ -6950,44 +6949,12 @@ struct SettingsView: View {
 
                     inlineDiagnosticsSection
 
-                    settingsSupportSection
                 }
             }
         }
         .onAppear {
             hardwareAnnouncements.refresh()
         }
-    }
-
-    private var settingsSupportSection: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "bubble.left.and.bubble.right")
-                .font(.system(size: 21, weight: .medium))
-                .foregroundStyle(Color.accentColor)
-                .frame(width: 34)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("about.support.feedback")
-                    .font(.subheadline.weight(.semibold))
-                Text("about.support.feedback_description")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 16)
-            Link(destination: localization.localizedWebsiteURL) {
-                Label("about.support.website", systemImage: "globe")
-            }
-            .compatibilityButtonStyle(.standard)
-            Link(destination: AppLinks.githubRepository) {
-                Label("about.support.github", systemImage: "link")
-            }
-            .compatibilityButtonStyle(.standard)
-            Link(destination: AppLinks.feedback) {
-                Label("about.support.feedback_action", systemImage: "arrow.up.right")
-            }
-            .compatibilityButtonStyle(.standard)
-        }
-        .padding(.vertical, 12)
-        .overlay(alignment: .bottom) { Divider() }
     }
 
     @ViewBuilder

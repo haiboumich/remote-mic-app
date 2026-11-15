@@ -3,19 +3,12 @@ import Testing
 @testable import RemoteMic
 
 struct AppSharingTests {
-    @Test func localizedWebsiteShareLinksIncludeTheMacShareSource() throws {
+    @Test func localizedWebsiteShareLinksAreDisabledOffline() throws {
         let chinese = try components(AppShareLink.url(for: Locale(identifier: "zh-Hans")))
         let english = try components(AppShareLink.url(for: Locale(identifier: "en")))
 
-        #expect(chinese.scheme == "https")
-        #expect(chinese.host == "sayall.app")
-        #expect(chinese.path == "/")
-        #expect(chinese.queryItems == [URLQueryItem(name: "utm_source", value: "mac_share")])
-
-        #expect(english.scheme == "https")
-        #expect(english.host == "sayall.app")
-        #expect(english.path == "/en/")
-        #expect(english.queryItems == [URLQueryItem(name: "utm_source", value: "mac_share")])
+        #expect(chinese.url == OfflineRuntimePolicy.disabledExternalURL)
+        #expect(english.url == OfflineRuntimePolicy.disabledExternalURL)
     }
 
     @Test func shareSourcePreservesOtherQueryItemsAndOverwritesExistingSource() throws {

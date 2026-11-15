@@ -50,23 +50,23 @@ struct LocalizationTests {
         localization.select(.english)
         #expect(localization.language == .english)
         #expect(localization.locale.identifier == "en")
-        #expect(localization.localizedWebsiteURL.absoluteString == "https://sayall.app/en/")
+        #expect(localization.localizedWebsiteURL == OfflineRuntimePolicy.disabledExternalURL)
         #expect(AppSettings(defaults: defaults).applicationLanguage == .english)
 
         localization.select(.simplifiedChinese)
         #expect(localization.language == .simplifiedChinese)
         #expect(localization.locale.identifier == "zh-Hans")
-        #expect(localization.localizedWebsiteURL.absoluteString == "https://sayall.app/")
+        #expect(localization.localizedWebsiteURL == OfflineRuntimePolicy.disabledExternalURL)
         #expect(AppSettings(defaults: defaults).applicationLanguage == .simplifiedChinese)
     }
 
     @Test func appStoreLinksFollowTheSelectedLanguage() {
-        #expect(AppLinks.iOSAppStore(for: Locale(identifier: "zh-Hans")).absoluteString ==
-            "https://apps.apple.com/app/%E6%97%A0%E7%BA%BF%E9%BA%A6/id6797208067")
+        #expect(AppLinks.iOSAppStore(for: Locale(identifier: "zh-Hans")) ==
+            OfflineRuntimePolicy.disabledExternalURL)
         #expect(AppLinks.iOSAppStore(for: Locale(identifier: "zh-Hant")).absoluteString ==
             AppLinks.chineseIOSAppStore.absoluteString)
-        #expect(AppLinks.iOSAppStore(for: Locale(identifier: "en")).absoluteString ==
-            "https://apps.apple.com/app/sayall/id6797208067")
+        #expect(AppLinks.iOSAppStore(for: Locale(identifier: "en")) ==
+            OfflineRuntimePolicy.disabledExternalURL)
     }
 
     @Test func readmesUseVersionIndependentMacDownloadEntries() throws {

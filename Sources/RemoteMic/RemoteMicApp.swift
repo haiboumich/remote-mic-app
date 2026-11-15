@@ -625,9 +625,6 @@ private final class RemoteMicAppDelegate: NSObject, NSApplicationDelegate, NSMen
         menu.addItem(.separator())
         menu.addItem(menuItem("menu.about", action: #selector(showAbout)))
         menu.addItem(versionMenuItem())
-        menu.addItem(menuItem("menu.check_for_updates", action: #selector(checkForUpdates)))
-        menu.addItem(menuItem("about.support.github", action: #selector(openGitHub)))
-        menu.addItem(menuItem("about.support.website", action: #selector(openWebsite)))
         menu.addItem(.separator())
         menu.addItem(menuItem("common.action.quit", action: #selector(quit)))
         statusMenu = menu
@@ -1308,14 +1305,6 @@ private final class RemoteMicAppDelegate: NSObject, NSApplicationDelegate, NSMen
                 "reason=\(applied ? "policy_active" : "appkit_rejected") " +
                 "elapsed_ms=\(elapsedMilliseconds) dock_visible=unknown \(fields)"
         )
-    }
-
-    @objc private func openGitHub() {
-        NSWorkspace.shared.open(AppLinks.githubRepository)
-    }
-
-    @objc private func openWebsite() {
-        NSWorkspace.shared.open(localization.localizedWebsiteURL)
     }
 
     @objc private func closeKeyWindow() {

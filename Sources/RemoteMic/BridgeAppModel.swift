@@ -9506,6 +9506,7 @@ final class BridgeAppModel: NSObject, ObservableObject, XiaomiBluetoothBridgeDel
     /// 生效的语音模式：设备**自报**不支持「按一次收音」时，即使设置里存着 toggle 也按「按住说话」执行。
     /// 这样能力不足的型号不会因为一份历史设置而走进它做不到的路径（设置里的原值保留，不静默改写）。
     var effectiveChromecastVoiceMode: ChromecastVoiceMode {
+        guard ChromecastFeatureIntegration.supportsToggleVoiceGesture else { return .hold }
         let declared = chromecastDeclaredCapabilities
         guard !declared.isEmpty, !declared.contains(.toggleVoiceGesture) else {
             return settings.chromecastVoiceMode

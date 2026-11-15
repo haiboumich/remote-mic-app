@@ -436,10 +436,8 @@ struct BuildSigningTests {
             contentsOf: root.appendingPathComponent("Package.swift"),
             encoding: .utf8
         )
-        let resolvedSource = try String(
-            contentsOf: root.appendingPathComponent("Package.resolved"),
-            encoding: .utf8
-        )
+        let resolvedURL = root.appendingPathComponent("Package.resolved")
+        let resolvedSource = (try? String(contentsOf: resolvedURL, encoding: .utf8)) ?? ""
         let buildSource = try String(
             contentsOf: root.appendingPathComponent("scripts/build-app.sh"),
             encoding: .utf8
@@ -664,9 +662,9 @@ struct BuildSigningTests {
                     return define["_0"] as? String
                 }
                 #expect(defines.contains("SAYALL_UNIFIED_BUTTON_CONFIGURATION") == includesArtifacts)
+                #expect(defines.contains("SAYALL_CHROMECAST_ENABLED"))
                 for hardwareFlag in [
                     "SAYALL_SIRI_REMOTE_ENABLED",
-                    "SAYALL_CHROMECAST_ENABLED",
                     "SAYALL_MAC_REMOTE_ENABLED",
                 ] {
                     #expect(defines.contains(hardwareFlag) == includesArtifacts)

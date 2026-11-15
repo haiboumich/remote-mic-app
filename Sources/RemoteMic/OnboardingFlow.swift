@@ -404,7 +404,9 @@ enum OnboardingControlSource: String, CaseIterable, Codable, Identifiable {
             return []
         case .xiaomiRemote, .siriRemote:
             return [.hold]
-        case .chromecastRemote, .appleCompanion, .webRemote:
+        case .chromecastRemote:
+            return ChromecastFeatureIntegration.supportsToggleVoiceGesture ? [.hold, .toggle] : [.hold]
+        case .appleCompanion, .webRemote:
             return [.hold, .toggle]
         }
     }
@@ -677,7 +679,8 @@ struct OnboardingVoicePairingPlan: Equatable {
             binding.shortcut == .function &&
             !controlSource.supportedGestureModes.contains(.toggle)
         let chromecastMode: ChromecastVoiceMode? = controlSource == .chromecastRemote
-            ? (binding.gestureMode == .toggle ? .toggle : .hold)
+            ? (binding.gestureMode == .toggle && ChromecastFeatureIntegration.supportsToggleVoiceGesture
+                ? .toggle : .hold)
             : nil
         return Self(
             binding: binding,

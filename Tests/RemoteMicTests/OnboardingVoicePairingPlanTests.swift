@@ -49,10 +49,11 @@ struct OnboardingVoicePairingPlanTests {
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let settings = AppSettings(defaults: defaults)
+        let canToggle = ChromecastFeatureIntegration.supportsToggleVoiceGesture
         let learned = VoiceToolUserBinding(
             tool: .doubao,
-            shortcut: .rightCommand,
-            gestureMode: .toggle,
+            shortcut: canToggle ? .rightCommand : .function,
+            gestureMode: canToggle ? .toggle : .hold,
             source: .userLearned,
             validationState: .verified,
             verifiedToolVersion: nil,
@@ -74,7 +75,7 @@ struct OnboardingVoicePairingPlanTests {
             controlSource: settings.onboardingControlSource,
             userBinding: settings.verifiedVoiceToolBinding
         ))
-        #expect(plan.binding.shortcut == .rightCommand)
+        #expect(plan.binding.shortcut == learned.shortcut)
         #expect(plan.binding.source == .userLearned)
     }
 
@@ -114,22 +115,24 @@ struct OnboardingVoicePairingPlanTests {
         }
     }
 
-    @Test func chromecastUsesNativeToggleWithoutFnTapConversion() throws {
+    @Test func chromecastOnboardingMatchesAvailableGesture() throws {
+        let canToggle = ChromecastFeatureIntegration.supportsToggleVoiceGesture
         let doubao = try #require(OnboardingVoicePairingPlan.resolve(
             tool: .doubao,
             controlSource: .chromecastRemote
         ))
-        #expect(doubao.binding.gestureMode == .toggle)
-        #expect(doubao.binding.shortcut == .rightCommand)
+        #expect(doubao.binding.gestureMode == (canToggle ? .toggle : .hold))
+        #expect(doubao.binding.shortcut == (canToggle ? .rightCommand : .function))
         #expect(!doubao.fnTapModeEnabled)
-        #expect(doubao.chromecastVoiceMode == .toggle)
+        #expect(doubao.chromecastVoiceMode == (canToggle ? .toggle : .hold))
 
         let typeless = try #require(OnboardingVoicePairingPlan.resolve(
             tool: .typeless,
             controlSource: .chromecastRemote
         ))
         #expect(typeless.binding.shortcut == .function)
-        #expect(!typeless.fnTapModeEnabled)
+        #expect(typeless.fnTapModeEnabled == !canToggle)
+        #expect(typeless.chromecastVoiceMode == (canToggle ? .toggle : .hold))
     }
 
     @Test func appleAndWebExposeHoldAndToggle() {
@@ -147,12 +150,16 @@ struct OnboardingVoicePairingPlanTests {
             verifiedToolVersion: nil,
             verifiedAt: Date(timeIntervalSince1970: 1)
         )
-        let chromecast = try #require(OnboardingVoicePairingPlan.resolve(
+        let chromecast = OnboardingVoicePairingPlan.resolve(
             tool: .doubao,
             controlSource: .chromecastRemote,
             userBinding: learned
-        ))
-        #expect(chromecast.binding == learned)
+        )
+        if ChromecastFeatureIntegration.supportsToggleVoiceGesture {
+            #expect(chromecast?.binding == learned)
+        } else {
+            #expect(chromecast == nil)
+        }
 
         #expect(OnboardingVoicePairingPlan.resolve(
             tool: .doubao,

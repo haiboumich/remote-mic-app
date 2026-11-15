@@ -52,7 +52,9 @@ enum ChromecastVoiceMode: String, CaseIterable, Codable, Identifiable {
 
     var id: String { rawValue }
 
-    static let productDefault: ChromecastVoiceMode = .toggle
+    static var productDefault: ChromecastVoiceMode {
+        ChromecastFeatureIntegration.supportsToggleVoiceGesture ? .toggle : .hold
+    }
 
     var localizationKey: String {
         switch self {
@@ -198,12 +200,19 @@ struct ChromecastRemoteControlEvent: Equatable {
 /// 隔离保证：本类型与 Siri Remote 接入层互不引用；私有包缺失时全部方法退化为 no-op，
 /// 宿主的编译、运行和打包都不受影响。
 final class ChromecastFeatureIntegration {
-    static var nativeInputProductIDs: Set<Int> {
+    static let publicDeclaredCapabilities: ChromecastDeclaredCapabilities = [.voiceStream]
+
+    static var supportsToggleVoiceGesture: Bool {
         #if SAYALL_CHROMECAST_ENABLED && canImport(SayAllChromecast)
-        return [0x9450]
+        return true
         #else
-        return []
+        return false
         #endif
+    }
+    static var nativeInputProductIDs: Set<Int> {
+        // HID control mapping has not yet been brought into the public adapter.
+        // Do not rewrite native mappings until that path can emit paired edges.
+        return []
     }
     var prepareNativeInput: (([UInt64]) -> Bool)? {
         didSet {
@@ -219,13 +228,9 @@ final class ChromecastFeatureIntegration {
             #endif
         }
     }
-    /// 本次构建是否编入了私有包。
+    /// 本次构建是否编入 Chromecast 接入层（私有包或公开兼容层）。
     static var isPackageIncluded: Bool {
-        #if SAYALL_CHROMECAST_ENABLED && canImport(SayAllChromecast)
         return true
-        #else
-        return false
-        #endif
     }
 
     /// 链路状态变化。宿主据此刷新设置页与日志。
@@ -249,6 +254,8 @@ final class ChromecastFeatureIntegration {
 
     #if SAYALL_CHROMECAST_ENABLED && canImport(SayAllChromecast)
     private let feature: SayAllChromecastFeature
+    #else
+    private let feature = PublicChromecastBluetoothBridge()
     #endif
 
     init() {
@@ -277,17 +284,40 @@ final class ChromecastFeatureIntegration {
                 cancellationReason: event.cancellationReason?.logToken
             ))
         }
+        #else
+        feature.onStatusChange = { [weak self] status in
+            self?.onStatusChange?(status)
+        }
+        feature.onDeclaredCapabilitiesChange = { [weak self] capabilities in
+            self?.onDeclaredCapabilitiesChange?(capabilities)
+        }
+        feature.onVoiceStart = { [weak self] in
+            self?.onVoiceStart?()
+        }
+        feature.onVoiceStop = { [weak self] reason in
+            self?.onVoiceStop?(reason)
+        }
+        feature.onSamples = { [weak self] samples, generation in
+            self?.onSamples?(samples, generation)
+        }
+        feature.onLog = { [weak self] message in
+            self?.onLog?(message)
+        }
         #endif
     }
 
     func start() {
         #if SAYALL_CHROMECAST_ENABLED && canImport(SayAllChromecast)
         feature.start()
+        #else
+        feature.start()
         #endif
     }
 
     func stop() {
         #if SAYALL_CHROMECAST_ENABLED && canImport(SayAllChromecast)
+        feature.stop()
+        #else
         feature.stop()
         #endif
     }
@@ -296,12 +326,18 @@ final class ChromecastFeatureIntegration {
     func reconnect() {
         #if SAYALL_CHROMECAST_ENABLED && canImport(SayAllChromecast)
         feature.reconnect()
+        #else
+        feature.reconnect()
         #endif
     }
 
     func setVoiceMode(_ mode: ChromecastVoiceMode) {
         #if SAYALL_CHROMECAST_ENABLED && canImport(SayAllChromecast)
         feature.setVoiceGestureMode(mode == .hold ? .hold : .toggle)
+        #else
+        // The verified public path is hold-to-talk. Toggle must not synthesize
+        // MIC_OPEN until it has dedicated real-hardware coverage.
+        if mode == .toggle { onLog?("CHROMECAST VOICE mode=toggle result=deferred reason=public_adapter_hold_only") }
         #endif
     }
 
@@ -311,6 +347,8 @@ final class ChromecastFeatureIntegration {
     func setControlMappingEnabled(_ enabled: Bool) {
         #if SAYALL_CHROMECAST_ENABLED && canImport(SayAllChromecast)
         feature.setControlMappingEnabled(enabled)
+        #else
+        if enabled { onLog?("CHROMECAST HID mapping=deferred reason=public_adapter_voice_only") }
         #endif
     }
 
@@ -326,6 +364,8 @@ final class ChromecastFeatureIntegration {
     /// 宿主侧语音会话被关闭（用户关闭语音、切换输入源）。包内 latched 状态必须同步清空。
     func notifyHostVoiceSessionEnded() {
         #if SAYALL_CHROMECAST_ENABLED && canImport(SayAllChromecast)
+        feature.notifyHostVoiceSessionEnded()
+        #else
         feature.notifyHostVoiceSessionEnded()
         #endif
     }

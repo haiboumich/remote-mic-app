@@ -157,10 +157,7 @@ case "$SAYALL_SIRI_REMOTE_INCLUDED" in
     exit 1
     ;;
 esac
-test -d "$SPARKLE_FRAMEWORK"
-test -x "$SPARKLE_FRAMEWORK/Versions/B/Sparkle"
-test -x "$SPARKLE_FRAMEWORK/Versions/B/Autoupdate"
-test -x "$SPARKLE_FRAMEWORK/Versions/B/Updater.app/Contents/MacOS/Updater"
+test ! -e "$SPARKLE_FRAMEWORK"
 SAYALL_CHROMECAST_INCLUDED="$(plutil -extract SayAllChromecastIncluded raw -o - "$PLIST" 2>/dev/null || true)"
 case "$SAYALL_CHROMECAST_INCLUDED" in
   true)
@@ -307,12 +304,13 @@ if [[ "$SAYALL_BUILD_CHANNEL" == "local" || "$SAYALL_BUILD_CHANNEL" == "release"
   REQUIRE_DIAGNOSTIC_SERVICE=1
 fi
 test -n "$(plutil -extract NSBluetoothAlwaysUsageDescription raw -o - "$PLIST")"
-test "$(plutil -extract SUFeedURL raw -o - "$PLIST")" = "$RELEASE_FEED_URL"
-test "$(plutil -extract SUEnableAutomaticChecks raw -o - "$PLIST")" = "true"
-test "$(plutil -extract SUScheduledCheckInterval raw -o - "$PLIST")" = "86400"
-test "$(plutil -extract SUAutomaticallyUpdate raw -o - "$PLIST")" = "false"
-test "$(plutil -extract SUAllowsAutomaticUpdates raw -o - "$PLIST")" = "false"
-test -n "$(plutil -extract SUPublicEDKey raw -o - "$PLIST")"
+for update_key in SUFeedURL SUEnableAutomaticChecks SUScheduledCheckInterval \
+  SUAutomaticallyUpdate SUAllowsAutomaticUpdates SUPublicEDKey; do
+  if plutil -type "$update_key" "$PLIST" >/dev/null 2>&1; then
+    print -u2 "Offline app must not carry Sparkle key: $update_key"
+    exit 1
+  fi
+done
 if plutil -type SayAllDiagnosticPublicKey "$PLIST" >/dev/null 2>&1; then
   SAYALL_DIAGNOSTIC_PUBLIC_KEY_BASE64="$(
     plutil -extract SayAllDiagnosticPublicKey raw -expect string -o - "$PLIST"
@@ -565,13 +563,7 @@ if [[ "$REQUIRE_DEVELOPER_ID_SIGNING" == "1" ]]; then
       "$OPUS_DYLIB"
     )
   fi
-  for signed_component in \
-    "${signed_components[@]}" \
-    "$SPARKLE_FRAMEWORK/Versions/B/XPCServices/Installer.xpc" \
-    "$SPARKLE_FRAMEWORK/Versions/B/XPCServices/Downloader.xpc" \
-    "$SPARKLE_FRAMEWORK/Versions/B/Autoupdate" \
-    "$SPARKLE_FRAMEWORK/Versions/B/Updater.app" \
-    "$SPARKLE_FRAMEWORK"; do
+  for signed_component in "${signed_components[@]}"; do
     COMPONENT_SIGNATURE_DETAILS="$(codesign -dvvv "$signed_component" 2>&1)"
     print -r -- "$COMPONENT_SIGNATURE_DETAILS" | rg -q '^Authority=Developer ID Application:'
     print -r -- "$COMPONENT_SIGNATURE_DETAILS" | \
@@ -621,16 +613,6 @@ if [[ "$SAYALL_SIRI_REMOTE_INCLUDED" == "true" ]]; then
 fi
 otool -l "$BINARY" | rg -A2 'LC_RPATH' | rg -q '@executable_path/\.\./Frameworks'
 
-if [[ "$RELEASE_VARIANT" == "intel" ]]; then
-  for sparkle_binary in \
-    "$SPARKLE_FRAMEWORK/Versions/B/Sparkle" \
-    "$SPARKLE_FRAMEWORK/Versions/B/Autoupdate" \
-    "$SPARKLE_FRAMEWORK/Versions/B/Updater.app/Contents/MacOS/Updater" \
-    "$SPARKLE_FRAMEWORK/Versions/B/XPCServices/Installer.xpc/Contents/MacOS/Installer" \
-    "$SPARKLE_FRAMEWORK/Versions/B/XPCServices/Downloader.xpc/Contents/MacOS/Downloader"; do
-    test "$(lipo -archs "$sparkle_binary")" = "x86_64"
-  done
-fi
 
 EXPECTED_APP_FILES=$'Contents/Helpers/SayAllMCP\nContents/Info.plist\nContents/MacOS/RemoteMic\nContents/Resources/AppIcon.icns\nContents/Resources/COPYRIGHT.md\nContents/Resources/FirstInstallGuide.md\nContents/Resources/LICENSE.md\nContents/Resources/LOGO-LICENSE.md\nContents/Resources/RC001-remote-photo.png\nContents/Resources/RC003-remote-photo.png\nContents/Resources/README.md\nContents/Resources/StatusIconActiveTemplate.png\nContents/Resources/StatusIconActiveTemplate@2x.png\nContents/Resources/StatusIconTemplate.png\nContents/Resources/StatusIconTemplate@2x.png\nContents/Resources/TECHNICAL.md\nContents/Resources/THIRD_PARTY_NOTICES.md\nContents/Resources/TROUBLESHOOTING.md\nContents/_CodeSignature/CodeResources'
 if [[ "$SAYALL_SIRI_REMOTE_INCLUDED" == "true" ]]; then

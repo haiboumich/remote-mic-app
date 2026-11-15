@@ -226,7 +226,9 @@ if buttonProfilesTestAccessEnabled && (buttonProfilesPackagePath ?? "").isEmpty 
 if buttonProfilesTestAccessEnabled && privateArtifactsAvailable {
     fatalError("free button profile test access excludes private membership artifacts")
 }
-let chromecastEnabled = privateChromecastEnabled || !(chromecastPackagePath ?? "").isEmpty
+// The offline-only build owns a small, auditable CoreBluetooth adapter for the
+// confirmed Google remote. It does not require the former private package.
+let chromecastEnabled = true
 let macOSPlatform: SupportedPlatform = ProcessInfo.processInfo.environment["RELEASE_VARIANT"] == "intel"
     ? .macOS(.v13)
     : .macOS(.v14)

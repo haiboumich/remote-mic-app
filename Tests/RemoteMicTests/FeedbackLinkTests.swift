@@ -3,21 +3,15 @@ import Testing
 @testable import RemoteMic
 
 struct FeedbackLinkTests {
-    @Test func feedbackUsesPublicMacGuestEntryWithoutCredentials() throws {
+    @Test func feedbackIsUnavailableInOfflineBuild() throws {
         let components = try #require(URLComponents(
             url: AppLinks.feedback,
             resolvingAgainstBaseURL: false
         ))
 
-        #expect(components.scheme == "https")
-        #expect(components.host == "my.sayall.app")
-        #expect(components.path == "/api/guest-entry")
-        #expect(components.queryItems == [URLQueryItem(name: "source", value: "mac")])
-
-        let forbiddenNames = ["code", "token", "device", "device_id", "deviceid"]
-        #expect(components.queryItems?.allSatisfy {
-            !forbiddenNames.contains($0.name.lowercased())
-        } == true)
+        #expect(components.url == OfflineRuntimePolicy.disabledExternalURL)
+        #expect(components.scheme != "https")
+        #expect(components.queryItems == nil)
     }
 
     @Test func aboutPageOwnsFeedbackWithoutKeepingTheStatusMenuEntry() throws {
@@ -36,8 +30,8 @@ struct FeedbackLinkTests {
 
         #expect(!appSource.contains("#selector(openFeedback)"))
         #expect(!appSource.contains("@objc private func openFeedback()"))
-        #expect(settingsSource.contains("Link(destination: AppLinks.feedback)"))
-        #expect(settingsSource.contains("about.support.feedback_action"))
+        #expect(!settingsSource.contains("Link(destination: AppLinks.feedback)"))
+        #expect(!settingsSource.contains("about.support.feedback_action"))
     }
 }
 

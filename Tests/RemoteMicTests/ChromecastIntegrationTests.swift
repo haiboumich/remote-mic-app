@@ -43,9 +43,11 @@ struct ChromecastIntegrationTests {
 
     // MARK: - 产品默认值
 
-    @Test func productDefaultVoiceModeIsToggle() {
-        // 需求：toggle 为默认语音模式，hold 保留给用户可选切换。
-        #expect(ChromecastVoiceMode.productDefault == .toggle)
+    @Test func productDefaultVoiceModeMatchesAvailableAdapter() {
+        // The public adapter has only the confirmed hold-to-talk lifecycle.
+        let expected: ChromecastVoiceMode = ChromecastFeatureIntegration.supportsToggleVoiceGesture
+            ? .toggle : .hold
+        #expect(ChromecastVoiceMode.productDefault == expected)
         #expect(ChromecastVoiceMode.allCases == [.toggle, .hold])
     }
 

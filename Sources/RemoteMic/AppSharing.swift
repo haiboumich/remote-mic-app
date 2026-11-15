@@ -7,7 +7,10 @@ enum AppShareLink {
     static let sourceName = "mac_share"
 
     static func url(for locale: Locale) -> URL {
-        url(byAddingSourceTo: AppLinks.website(for: locale))
+        guard OfflineRuntimePolicy.externalLinksEnabled else {
+            return OfflineRuntimePolicy.disabledExternalURL
+        }
+        return url(byAddingSourceTo: AppLinks.website(for: locale))
     }
 
     static func url(byAddingSourceTo baseURL: URL) -> URL {
