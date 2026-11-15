@@ -98,18 +98,8 @@ enum UpdateFeedResolver {
     }
 
     private static func loadFeedData(from url: URL) async throws -> Data {
-        var request = URLRequest(url: url)
-        request.cachePolicy = .reloadIgnoringLocalCacheData
-        request.timeoutInterval = 30
-        request.setValue("RemoteMic", forHTTPHeaderField: "User-Agent")
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let response = response as? HTTPURLResponse,
-              response.statusCode == 200,
-              data.count <= maximumFeedSize
-        else {
-            throw UpdateFeedResolutionError.invalidResponse
-        }
-        return data
+        _ = url
+        throw UpdateFeedResolutionError.invalidResponse
     }
 
     private static func resolvedFeed(
@@ -200,19 +190,8 @@ enum UpdateReleaseNotes {
     }
 
     static func load(from url: URL) async throws -> String {
-        var request = URLRequest(url: url)
-        request.cachePolicy = .reloadIgnoringLocalCacheData
-        request.timeoutInterval = 30
-        request.setValue("RemoteMic", forHTTPHeaderField: "User-Agent")
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let response = response as? HTTPURLResponse,
-              response.statusCode == 200,
-              data.count <= maximumDownloadSize,
-              let text = String(data: data, encoding: .utf8)
-        else {
-            throw UpdateFeedResolutionError.invalidResponse
-        }
-        return text
+        _ = url
+        throw UpdateFeedResolutionError.invalidResponse
     }
 }
 

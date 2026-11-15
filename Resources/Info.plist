@@ -74,35 +74,15 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>320</string>
-	<key>HardwareAnnouncementURL</key>
-	<string>https://download.sayall.app/mac/announcements/hardware.json</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Connect to supported remotes and Apple Watch to receive button presses and microphone audio.</string>
-	<key>NSBonjourServices</key>
-	<array>
-		<string>_remotemic._tcp</string>
-	</array>
 	<key>NSHumanReadableCopyright</key>
 	<string>GPL-3.0-only</string>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>Connect to SayAll on a nearby iPhone, iPad, or Apple Watch to receive button presses and microphone audio.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
-	<key>SUAllowsAutomaticUpdates</key>
-	<false/>
-	<key>SUAutomaticallyUpdate</key>
-	<false/>
-	<key>SUEnableAutomaticChecks</key>
-	<true/>
-	<key>SUFeedURL</key>
-	<string>https://download.sayall.app/mac/channels/stable/appcast.xml</string>
-	<key>SUPublicEDKey</key>
-	<string>8dWQovCnGPucjMcQuCHfrAv4PtjuDjJSbHNmItqYiyc=</string>
-	<key>SUScheduledCheckInterval</key>
-	<integer>86400</integer>
 </dict>
 </plist>

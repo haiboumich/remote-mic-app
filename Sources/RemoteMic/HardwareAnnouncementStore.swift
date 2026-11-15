@@ -37,35 +37,15 @@ private struct HardwareAnnouncementEnvelope: Decodable {
 }
 
 enum HardwareAnnouncementSource {
-    static let defaultURL = URL(
-        string: "https://download.sayall.app/mac/announcements/hardware.json"
-    )!
+    static let defaultURL = OfflineRuntimePolicy.disabledExternalURL
 
     static func resolve(
         bundle: Bundle = .main,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> URL {
-        if environment["REMOTE_MIC_UI_TEST_MODE"] == "1",
-           let injected = environment["REMOTE_MIC_UI_TEST_HARDWARE_ANNOUNCEMENTS_URL"],
-           let url = URL(string: injected),
-           url.scheme == "http",
-           url.host == "127.0.0.1" {
-            return url
-        }
-
-        if let configured = bundle.object(forInfoDictionaryKey: "HardwareAnnouncementURL") as? String,
-           let url = URL(string: configured),
-           isAllowed(url) {
-            return url
-        }
+        _ = bundle
+        _ = environment
         return defaultURL
-    }
-
-    private static func isAllowed(_ url: URL) -> Bool {
-        guard let host = url.host?.lowercased() else { return false }
-        if url.scheme == "https" && host == "download.sayall.app" { return true }
-        if url.scheme == "https" && host == "raw.githubusercontent.com" { return true }
-        return false
     }
 }
 
@@ -73,67 +53,20 @@ final class HardwareAnnouncementStore: ObservableObject {
     @Published private(set) var announcements: [HardwareAnnouncement] = []
     @Published private(set) var isLoading = false
 
-    private let session: URLSession
-    private let sourceURL: () -> URL
     private let logger: (String) -> Void
-    private var task: URLSessionDataTask?
     private var requestGeneration = 0
 
     init(
-        session: URLSession = .shared,
-        sourceURL: @escaping () -> URL = { HardwareAnnouncementSource.resolve() },
         logger: @escaping (String) -> Void = AppLogger.shared.write
     ) {
-        self.session = session
-        self.sourceURL = sourceURL
         self.logger = logger
     }
 
-    deinit {
-        task?.cancel()
-    }
-
     func refresh() {
-        task?.cancel()
         requestGeneration &+= 1
-        let generation = requestGeneration
-        isLoading = true
-        logger("HARDWARE ANNOUNCEMENT request_started")
-        var request = URLRequest(url: sourceURL())
-        request.cachePolicy = .reloadIgnoringLocalCacheData
-        request.timeoutInterval = 30
-        let task = session.dataTask(with: request) { [weak self] data, response, error in
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                guard self.requestGeneration == generation else { return }
-                defer {
-                    self.isLoading = false
-                    self.task = nil
-                }
-                guard error == nil,
-                      let http = response as? HTTPURLResponse,
-                      (200..<300).contains(http.statusCode),
-                      let data,
-                      let envelope = try? JSONDecoder.hardwareAnnouncement.decode(
-                        HardwareAnnouncementEnvelope.self,
-                        from: data
-                      )
-                else {
-                    self.announcements = []
-                    self.logger("HARDWARE ANNOUNCEMENT request_failed")
-                    return
-                }
-                self.announcements = envelope.announcements.filter {
-                    !$0.isExpired && $0.downloadURL.scheme?.lowercased() == "https"
-                }
-                self.logger(
-                    "HARDWARE ANNOUNCEMENT request_succeeded " +
-                        "visible_count=\(self.announcements.count)"
-                )
-            }
-        }
-        self.task = task
-        task.resume()
+        isLoading = false
+        announcements = []
+        logger("HARDWARE ANNOUNCEMENT request_skipped reason=offline_only")
     }
 }
 

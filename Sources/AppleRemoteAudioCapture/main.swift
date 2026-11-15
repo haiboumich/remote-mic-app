@@ -217,7 +217,14 @@ private final class CaptureServer {
 
     func start() {
         do {
-            let listener = try NWListener(using: .tcp, on: NWEndpoint.Port(rawValue: requestedPort) ?? .any)
+            let port = NWEndpoint.Port(rawValue: requestedPort) ?? .any
+            let parameters = NWParameters.tcp
+            parameters.acceptLocalOnly = true
+            parameters.requiredLocalEndpoint = .hostPort(
+                host: .ipv4(IPv4Address("127.0.0.1")!),
+                port: port
+            )
+            let listener = try NWListener(using: parameters, on: port)
             listener.stateUpdateHandler = { state in
                 if case .ready = state, let port = listener.port {
                     let line = Data("READY \(port.rawValue)\n".utf8)

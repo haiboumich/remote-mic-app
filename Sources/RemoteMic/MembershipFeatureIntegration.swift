@@ -132,9 +132,9 @@ final class MembershipFeatureIntegration: ObservableObject, @unchecked Sendable 
 
     @MainActor
     func refreshIfNeeded() {
-        #if SAYALL_MEMBERSHIP_ENABLED && canImport(SayAllMembershipHostAdapter)
-        adapter?.refreshIfNeeded()
-        #endif
+        // Membership refresh can contact a service. Offline-only builds never
+        // refresh account state in the background.
+        serviceEnvironmentForDiagnostics = "offline_only"
     }
 
     @MainActor

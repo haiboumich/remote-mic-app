@@ -1984,10 +1984,8 @@ struct SettingsPageRegressionTests {
             contentsOf: root.appendingPathComponent("Sources/RemoteMic/RemoteMicApp.swift"),
             encoding: .utf8
         )
-        #expect(appSource.contains("SPUStandardUserDriverDelegate"))
-        #expect(appSource.contains("userDriverDelegate: self"))
-        #expect(appSource.contains("standardUserDriverShouldShowVersionHistory(for item: SUAppcastItem) -> Bool"))
-        #expect(appSource.contains("semantic_newer_but_sparkle_rejected"))
+        #expect(appSource.contains("UPDATE CHECK startup result=disabled reason=offline_only"))
+        #expect(!appSource.contains("SPUStandardUpdaterController"))
     }
 
     @Test func statisticsVoiceSessionRankingUsesAccentColorForDecorativeHighlight() throws {

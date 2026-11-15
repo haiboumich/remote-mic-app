@@ -6956,11 +6956,6 @@ struct SettingsView: View {
         }
         .onAppear {
             hardwareAnnouncements.refresh()
-            guard !SettingsVisualRenderingPolicy.isScreenshotHarness else { return }
-            guard UpdateCheckPolicy(
-                checksForPreReleaseUpdates: settings.checksForPreReleaseUpdates
-            ).refreshesAboutInformationOnAppear else { return }
-            refreshUpdateInformation()
         }
     }
 

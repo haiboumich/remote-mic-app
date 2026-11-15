@@ -4,20 +4,8 @@ import Testing
 
 @Suite("Hardware announcements")
 struct HardwareAnnouncementTests {
-    @Test func localTestSourceIsRestrictedToLoopbackHTTP() throws {
-        let local = HardwareAnnouncementSource.resolve(environment: [
-            "REMOTE_MIC_UI_TEST_MODE": "1",
-            "REMOTE_MIC_UI_TEST_HARDWARE_ANNOUNCEMENTS_URL":
-                "http://127.0.0.1:8765/hardware.json",
-        ])
-        #expect(local.absoluteString == "http://127.0.0.1:8765/hardware.json")
-
-        let rejected = HardwareAnnouncementSource.resolve(environment: [
-            "REMOTE_MIC_UI_TEST_MODE": "1",
-            "REMOTE_MIC_UI_TEST_HARDWARE_ANNOUNCEMENTS_URL":
-                "https://example.com/hardware.json",
-        ])
-        #expect(rejected == HardwareAnnouncementSource.defaultURL)
+    @Test func sourceIsAlwaysDisabledForOfflineBuilds() throws {
+        #expect(HardwareAnnouncementSource.resolve() == OfflineRuntimePolicy.disabledExternalURL)
     }
 
     @Test func announcementUsesLanguageFallbackAndExpiry() throws {

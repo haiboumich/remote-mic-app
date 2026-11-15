@@ -2,9 +2,7 @@
 import Foundation
 import PackageDescription
 
-var packageDependencies: [Package.Dependency] = [
-    .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.6"),
-]
+var packageDependencies: [Package.Dependency] = []
 let privateSwiftPMEnabled = ProcessInfo.processInfo.environment[
     "SAYALL_ENABLE_PRIVATE_SWIFTPM"
 ] == "1"
@@ -19,7 +17,6 @@ var remoteMicDependencies: [Target.Dependency] = [
     "AppleRemoteHCIProtocol",
     "AppleRemotePacketLogger",
     "SayAllMCPKit",
-    .product(name: "Sparkle", package: "Sparkle"),
 ]
 var remoteMicTestDependencies: [Target.Dependency] = [
     "RemoteMic",

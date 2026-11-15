@@ -2,7 +2,6 @@ import AppKit
 import Combine
 import CoreBluetooth
 import Darwin
-import Sparkle
 import SwiftUI
 
 struct UpdateFeedSelection {
@@ -220,7 +219,7 @@ enum RemoteMicApp {
 
 @MainActor
 private final class RemoteMicAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemValidation,
-    NSWindowDelegate, SPUUpdaterDelegate, @preconcurrency SPUStandardUserDriverDelegate
+    NSWindowDelegate
 {
     /// 设置窗口的默认尺寸与最小尺寸（整窗，含标题栏）。
     ///
@@ -252,11 +251,6 @@ private final class RemoteMicAppDelegate: NSObject, NSApplicationDelegate, NSMen
     private var terminationSignalSources: [DispatchSourceSignal] = []
     private var applicationShortcutMonitor: Any?
     private var workspaceAudioLifecycleObservers: [NSObjectProtocol] = []
-    private var updateFeedSelection = UpdateFeedSelection(
-        stableFeedURLString: Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String
-    )
-    private var updateCheckTask: Task<Void, Never>?
-    private var updateChecks = UpdateCheckCoordinator()
     private let buttonProfileImportRequests = ButtonProfileImportRequestStore()
     private let searchFocusCoordinator = SearchFocusCoordinator()
     /// 「编辑 > 查找…」当前实例。`configureApplicationMenu()` 在语言切换后会重建菜单，
@@ -266,13 +260,6 @@ private final class RemoteMicAppDelegate: NSObject, NSApplicationDelegate, NSMen
     /// 「前往」菜单。`configureApplicationMenu()` 在语言切换后会重建菜单，
     /// 因此保存最新引用，供 `menuNeedsUpdate` 识别。
     private var goMenu: NSMenu?
-    private var resolvedUpdateFeedURLString: String?
-    private var updaterStarted = false
-    private lazy var updaterController = SPUStandardUpdaterController(
-        startingUpdater: false,
-        updaterDelegate: self,
-        userDriverDelegate: self
-    )
 
     private let connectionItem = NSMenuItem()
     private let audioItem = NSMenuItem()
@@ -292,7 +279,7 @@ private final class RemoteMicAppDelegate: NSObject, NSApplicationDelegate, NSMen
         let currentBuild = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
         let completedUpdate = model.settings.recordLaunchAndDetectCompletedUpdate(
             currentBuild: currentBuild,
-            sparkleHadLaunchedBefore: UserDefaults.standard.bool(forKey: "SUHasLaunchedBefore")
+            sparkleHadLaunchedBefore: false
         )
         observeUpdatePreferences()
         observeAppIconPreference()
@@ -374,7 +361,6 @@ private final class RemoteMicAppDelegate: NSObject, NSApplicationDelegate, NSMen
         model.privateFeature.hideHUDImmediately()
         model.stop()
         model.settings.discardOnboardingVoiceTrial()
-        updateCheckTask?.cancel()
         terminationSignalSources.forEach { $0.cancel() }
         terminationSignalSources.removeAll()
         if let applicationShortcutMonitor {
@@ -998,29 +984,7 @@ private final class RemoteMicAppDelegate: NSObject, NSApplicationDelegate, NSMen
     }
 
     private func observeUpdatePreferences() {
-        model.settings.$checksForPreReleaseUpdates
-            .removeDuplicates()
-            .dropFirst()
-            .receive(on: RunLoop.main)
-            .sink { [weak self] isEnabled in
-                guard let self else { return }
-                updateChecks.invalidate(cancelPreparation: updateCheckTask != nil)
-                updateCheckTask?.cancel()
-                updateCheckTask = nil
-                resolvedUpdateFeedURLString = nil
-                updateInformation.reset()
-                let policy = UpdateCheckPolicy(checksForPreReleaseUpdates: isEnabled)
-                if updaterStarted {
-                    updaterController.updater.automaticallyChecksForUpdates =
-                        policy.allowsBackgroundUpdatePrompts
-                }
-                if policy.startsUpdaterAutomatically {
-                    startUpdaterIfNeeded()
-                    updaterController.updater.resetUpdateCycleAfterShortDelay()
-                    refreshUpdateInformation()
-                }
-            }
-            .store(in: &subscriptions)
+        updateInformation.setUnavailable()
     }
 
     private func observeAppIconPreference() {
@@ -1042,38 +1006,8 @@ private final class RemoteMicAppDelegate: NSObject, NSApplicationDelegate, NSMen
     }
 
     private func configureUpdater() {
-        let checksForPreReleaseUpdates = model.settings.checksForPreReleaseUpdates
-        guard checksForPreReleaseUpdates else {
-            startUpdaterIfNeeded()
-            return
-        }
-    }
-
-    private func startUpdaterIfNeeded() {
-        guard !updaterStarted else { return }
-        updaterController.updater.automaticallyChecksForUpdates =
-            UpdateCheckPolicy(
-                checksForPreReleaseUpdates: model.settings.checksForPreReleaseUpdates
-            ).allowsBackgroundUpdatePrompts
-        updaterController.startUpdater()
-        updaterStarted = true
-    }
-
-    func feedURLString(for updater: SPUUpdater) -> String? {
-        let includePreRelease = model.settings.checksForPreReleaseUpdates
-        if let testFeed = UpdateFeedResolver.testInjectedFeed(
-            environment: ProcessInfo.processInfo.environment,
-            assetName: updateFeedSelection.appcastAssetName,
-            includePreRelease: includePreRelease
-        ) {
-            return testFeed.url.absoluteString
-        }
-        if includePreRelease, let resolvedUpdateFeedURLString {
-            return resolvedUpdateFeedURLString
-        }
-        return updateFeedSelection.feedURLString(
-            checksForPreReleaseUpdates: includePreRelease
-        )
+        updateInformation.setUnavailable()
+        AppLogger.shared.write("UPDATE CHECK startup result=disabled reason=offline_only")
     }
 
     private func refreshMenuStatus() {
@@ -1327,174 +1261,11 @@ private final class RemoteMicAppDelegate: NSObject, NSApplicationDelegate, NSMen
     }
 
     private func performUpdateCheck(_ purpose: UpdateCheckCoordinator.Purpose) {
-        let decision = updateChecks.request(
-            purpose,
-            sessionInProgress: updaterStarted && updaterController.updater.sessionInProgress
-        )
-        guard decision == .start else {
-            AppLogger.shared.write(
-                "UPDATE CHECK phase=completed result=reused " +
-                    "reason=\(decision == .cached ? "fresh_information" : "check_in_progress")"
-            )
-            return
-        }
-        updateCheckTask = Task { [weak self] in
-            guard let self else { return }
-            defer {
-                if !Task.isCancelled { updateCheckTask = nil }
-            }
-            updateInformation.beginChecking()
-            let includePreRelease = model.settings.checksForPreReleaseUpdates
-            let testFeed = UpdateFeedResolver.testInjectedFeed(
-                environment: ProcessInfo.processInfo.environment,
-                assetName: updateFeedSelection.appcastAssetName,
-                includePreRelease: includePreRelease
-            )
-            resolvedUpdateFeedURLString = nil
-            if includePreRelease {
-                let resolution: UpdateFeedResolver.FeedResolution
-                if let testFeed {
-                    resolution = UpdateFeedResolver.FeedResolution(
-                        stable: nil,
-                        preview: testFeed
-                    )
-                } else if let stableURL = updateFeedSelection.validatedStableFeedURL,
-                          let previewURL = updateFeedSelection.validatedPreReleaseFeedURL {
-                    resolution = await UpdateFeedResolver.resolvePreviewFeed(
-                        stableURL: stableURL,
-                        previewURL: previewURL
-                    )
-                } else {
-                    resolution = UpdateFeedResolver.FeedResolution(stable: nil, preview: nil)
-                }
-                guard !Task.isCancelled else { return }
-                guard let selectedFeed = resolution.selected else {
-                    finishUpdateCheck(success: false)
-                    updateInformation.setUnavailable()
-                    AppLogger.shared.write(
-                        "UPDATE CHECK prerelease_enabled=true resolved=false " +
-                            "stable_version=unknown preview_version=unknown " +
-                            "selected_channel=unknown source=cloudflare_channel user_alert=false"
-                    )
-                    return
-                }
-                resolvedUpdateFeedURLString = selectedFeed.url.absoluteString
-                AppLogger.shared.write(
-                    "UPDATE CHECK prerelease_enabled=true resolved=true " +
-                        "stable_version=\(resolution.stable?.version ?? "unknown") " +
-                        "preview_version=\(resolution.preview?.version ?? "unknown") " +
-                        "selected_channel=\(selectedFeed.isPreRelease ? "preview" : "stable") " +
-                        "source=\(testFeed == nil ? "cloudflare_channel" : "ui_test")"
-                )
-            } else {
-                guard updateFeedSelection.feedURLString(checksForPreReleaseUpdates: false) != nil else {
-                    finishUpdateCheck(success: false)
-                    updateInformation.setUnavailable()
-                    AppLogger.shared.write(
-                        "UPDATE CHECK prerelease_enabled=false resolved=false " +
-                            "source=cloudflare_channel user_alert=false"
-                    )
-                    return
-                }
-                AppLogger.shared.write(
-                    "UPDATE CHECK prerelease_enabled=false resolved=true " +
-                        "selected_channel=stable source=cloudflare_channel"
-                )
-            }
-            startUpdaterIfNeeded()
-            guard !updaterController.updater.sessionInProgress else {
-                let queuedUserCheck = updateChecks.finish(success: false)
-                if purpose == .userInitiated || queuedUserCheck {
-                    _ = updateChecks.request(.userInitiated, sessionInProgress: true)
-                }
-                return
-            }
-            switch purpose {
-            case .information:
-                updateInformation.beginChecking()
-                updaterController.updater.checkForUpdateInformation()
-            case .userInitiated:
-                updaterController.checkForUpdates(nil)
-            }
-        }
-    }
-
-    func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
-        updateInformation.setAvailable(
-            displayVersion: item.displayVersionString,
-            buildVersion: item.versionString,
-            archiveURL: item.fileURL,
-            fallbackDescription: item.itemDescription,
-            localeIdentifier: localization.locale.identifier
-        )
-    }
-
-    func updaterDidNotFindUpdate(_ updater: SPUUpdater) {
-        updateInformation.setUpToDate()
-    }
-
-    func updaterDidNotFindUpdate(_ updater: SPUUpdater, error: Error) {
-        let sparkleError = error as NSError
-        guard let latestItem = sparkleError.userInfo[SPULatestAppcastItemFoundKey] as? SUAppcastItem,
-              let currentVersion = Bundle.main.object(
-                  forInfoDictionaryKey: "CFBundleShortVersionString"
-              ) as? String,
-              let currentBuild = Bundle.main.object(
-                  forInfoDictionaryKey: "CFBundleVersion"
-              ) as? String,
-              let candidateBuild = Int(latestItem.versionString),
-              let installedBuild = Int(currentBuild),
-              candidateBuild < installedBuild,
-              UpdateVersion.isNewer(
-                  latestItem.displayVersionString,
-                  than: currentVersion
-              )
-        else {
-            updateInformation.setUpToDate()
-            return
-        }
-
-        updateInformation.setAvailable(
-            displayVersion: latestItem.displayVersionString,
-            buildVersion: latestItem.versionString,
-            archiveURL: latestItem.fileURL,
-            fallbackDescription: latestItem.itemDescription,
-            localeIdentifier: localization.locale.identifier
-        )
+        updateInformation.setUnavailable()
         AppLogger.shared.write(
-            "UPDATE CHECK semantic_newer_but_sparkle_rejected " +
-                "display_version=\(latestItem.displayVersionString) " +
-                "candidate_build=\(latestItem.versionString) " +
-                "installed_build=\(currentBuild)"
+            "UPDATE CHECK phase=completed result=disabled reason=offline_only " +
+                "purpose=\(purpose == .information ? "information" : "user_initiated")"
         )
-    }
-
-    func standardUserDriverShouldShowVersionHistory(for item: SUAppcastItem) -> Bool {
-        false
-    }
-
-    func updater(
-        _ updater: SPUUpdater,
-        didFinishUpdateCycleFor updateCheck: SPUUpdateCheck,
-        error: Error?
-    ) {
-        if error != nil, updateInformation.state == .checking {
-            updateInformation.setUnavailable()
-        }
-        let success: Bool
-        switch updateInformation.state {
-        case .available, .upToDate: success = true
-        case .idle, .checking, .unavailable: success = false
-        }
-        finishUpdateCheck(success: success)
-    }
-
-    private func finishUpdateCheck(success: Bool) {
-        guard updateChecks.finish(success: success) else { return }
-        Task { @MainActor [weak self] in
-            // Let Sparkle finish closing its previous session before opening the requested UI.
-            self?.performUpdateCheck(.userInitiated)
-        }
     }
 
     private func setDockIconVisible(_ isVisible: Bool) {
