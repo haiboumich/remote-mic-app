@@ -2110,6 +2110,7 @@ struct SettingsView: View {
 
     private func canWriteMappingBinding(button: RemoteButton, trigger: ButtonTrigger) -> Bool {
         guard !isMappingProfilePreviewOnly else { return false }
+        guard chromecastSystemManagedControl(for: button) == nil else { return false }
         switch mappingDisplayConfiguration(for: button, trigger: trigger) {
         case let .explicit(value): return value.isEditable
         case .inherited: return true
@@ -2175,6 +2176,21 @@ struct SettingsView: View {
     private var profileScopeReservedButtons: Set<RemoteButton> {
         guard editingMappingProfileID != nil else { return [] }
         return Set(RemoteButton.allCases.filter { !macroFeature.supportsProfileButton($0.rawValue) })
+    }
+
+    /// The public/offline Chromecast adapter cannot prevent macOS AACP from
+    /// consuming Left, Right and OK. Keep those cards visibly read-only even if
+    /// legacy preferences once opted them into mapping.
+    private var chromecastSystemManagedButtons: Set<RemoteButton> {
+        guard settings.selectedRemoteProfile?.model.isChromecastRemote == true else { return [] }
+        return Set(ChromecastRemoteControl.systemReservedControls.map(\.remoteButton))
+    }
+
+    private func chromecastSystemManagedControl(
+        for button: RemoteButton
+    ) -> ChromecastRemoteControl? {
+        guard settings.selectedRemoteProfile?.model.isChromecastRemote == true else { return nil }
+        return ChromecastRemoteControl.systemReservedControls.first { $0.remoteButton == button }
     }
 
     /// 键位方案实际覆盖的按键名单，按固定顺序排列，方向键四颗合并成「方向键」。
@@ -2646,8 +2662,19 @@ struct SettingsView: View {
                 activeButtons: model.activeRemoteButtons,
                 voiceActive: model.isStreaming,
                 remoteModel: settings.selectedRemoteProfile?.model,
-                actionSummary: { button, trigger in mappingActionSummary(for: button, trigger: trigger) },
-                holdSummary: { button in mappingHoldSummary(for: button) },
+                actionSummary: { button, trigger in
+                    if let control = chromecastSystemManagedControl(for: button) {
+                        return trigger == .singleClick
+                            ? localization.text("chromecast.mapping.system.\(control.rawValue)")
+                            : "—"
+                    }
+                    return mappingActionSummary(for: button, trigger: trigger)
+                },
+                holdSummary: { button in
+                    chromecastSystemManagedControl(for: button) == nil
+                        ? mappingHoldSummary(for: button)
+                        : "—"
+                },
                 actionDetail: { button, trigger in mappingActionDetail(for: button, trigger: trigger) },
                 onEdit: { button, trigger in
                     selectedRemoteButton = button
@@ -2674,7 +2701,9 @@ struct SettingsView: View {
                     requestMappingEditorScroll(focusHold: true)
                 },
                 onVoiceSettings: presentMappingVoiceSettings,
-                reservedButtons: profileScopeReservedButtons
+                reservedButtons: profileScopeReservedButtons.union(
+                    chromecastSystemManagedButtons
+                )
             )
             // 按下实体遥控器时只让对应卡片显示按下态（橙色），不移动选中项：
             // 选中项决定高亮和编辑落点，跟着按键跳会把手里的编辑顶掉。
@@ -3062,6 +3091,7 @@ struct SettingsView: View {
 
     private func canWriteMappingHold(_ button: RemoteButton) -> Bool {
         guard !isMappingProfilePreviewOnly else { return false }
+        guard chromecastSystemManagedControl(for: button) == nil else { return false }
         if let profile = editingMappingProfileID {
             if case .unavailable = macroFeature.displayProfileHoldMode(profile: profile, button: button) { return false }
             return ButtonTrigger.allCases.allSatisfy { canWriteMappingBinding(button: button, trigger: $0) }

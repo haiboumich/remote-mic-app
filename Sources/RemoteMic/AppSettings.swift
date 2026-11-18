@@ -305,6 +305,7 @@ private struct DailyUsageStatistics: Codable {
 final class AppSettings: ObservableObject {
     static let continuousRecordingExperimentAvailable = false
     static let currentOnboardingVersion = 1
+    static let currentChromecastMuteReturnMigrationVersion = 1
 
     private enum Keys {
         /// 历史键：只读取用于迁移，不再写入。
@@ -342,6 +343,8 @@ final class AppSettings: ObservableObject {
         static let siriRemoteNeedsUserAction = "siriRemote.needsUserAction"
         static let chromecastEnabled = "chromecast.enabled"
         static let chromecastVoiceMode = "chromecast.voiceMode"
+        static let chromecastMuteReturnMigrationVersion =
+            "chromecast.muteReturnMigrationVersion"
         static let localTranscriptHistoryEnabled = "localTranscriptHistoryEnabled"
         static let localOriginalAudioRecordingEnabled = "localOriginalAudioRecordingEnabled"
         static let continuousRecordingPowerBindingBackup = "continuousRecordingPowerBindingBackup"
@@ -1888,21 +1891,24 @@ final class AppSettings: ObservableObject {
     /// 宿主侧 HID 指纹，因此以型号为准（同时最多只有一台该型号遥控器）。
     @discardableResult
     func registerChromecastRemote() -> UUID {
-        if let existing = remoteDeviceProfiles.first(where: { $0.model == .chromecastVoiceRemote }) {
-            return existing.id
+        if let index = remoteDeviceProfiles.firstIndex(where: { $0.model == .chromecastVoiceRemote }) {
+            applyChromecastMuteDefaultIfNeeded(at: index)
+            return remoteDeviceProfiles[index].id
         }
         if let index = remoteDeviceProfiles.firstIndex(where: {
             $0.bluetoothIdentifier == nil && $0.hidFingerprint == nil && $0.model == .unknown
         }) {
             remoteDeviceProfiles[index].model = .chromecastVoiceRemote
+            applyChromecastMuteDefaultIfNeeded(at: index)
             ensureGestureTiming(for: .chromecastVoiceRemote, profileID: remoteDeviceProfiles[index].id)
             return remoteDeviceProfiles[index].id
         }
         let profile = RemoteDeviceProfile(
             model: .chromecastVoiceRemote,
-            mappings: mappingsForNewRemote()
+            mappings: mappingsForNewChromecastRemote()
         )
         remoteDeviceProfiles.append(profile)
+        applyChromecastMuteDefaultIfNeeded(at: remoteDeviceProfiles.count - 1)
         ensureGestureTiming(for: .chromecastVoiceRemote, profileID: profile.id)
         return profile.id
     }
@@ -1932,6 +1938,52 @@ final class AppSettings: ObservableObject {
             buttonRapidPressEnabled: buttonRapidPressEnabled,
             interactionSettings: interactionSettings
         )
+    }
+
+    private func mappingsForNewChromecastRemote() -> RemoteDeviceMappings {
+        var mappings = mappingsForNewRemote()
+        if (mappings.parsedButtonBindings[.mute] ?? Self.defaultBindings[.mute]) == .volumeMute {
+            mappings.buttonBindings[RemoteButton.mute.rawValue] = ButtonAction.returnKey
+            mappings.buttonShortcuts.removeValue(forKey: RemoteButton.mute.rawValue)
+            mappings.buttonApplicationProfileIDs?.removeValue(forKey: RemoteButton.mute.rawValue)
+        }
+        return mappings
+    }
+
+    /// The public Chromecast path uses Mute as the safe replacement for the
+    /// AACP-owned center key. Old profiles serialized every default binding, so
+    /// an explicitly re-selected Volume Mute cannot be distinguished from the
+    /// former product default. Apply this product-default change exactly once;
+    /// later user changes (including changing back to Volume Mute) remain intact.
+    private func applyChromecastMuteDefaultIfNeeded(at index: Int) {
+        guard defaults.integer(forKey: Keys.chromecastMuteReturnMigrationVersion) <
+                Self.currentChromecastMuteReturnMigrationVersion else { return }
+        defer {
+            defaults.set(
+                Self.currentChromecastMuteReturnMigrationVersion,
+                forKey: Keys.chromecastMuteReturnMigrationVersion
+            )
+        }
+        let current = remoteDeviceProfiles[index].mappings.parsedButtonBindings[.mute]
+            ?? Self.defaultBindings[.mute]
+        guard current == .volumeMute else { return }
+        if defaults.data(forKey: "chromecastMuteReturnMigrationBackup") == nil,
+           let original = defaults.data(forKey: Keys.remoteDeviceProfiles) {
+            defaults.set(original, forKey: "chromecastMuteReturnMigrationBackup")
+        }
+        remoteDeviceProfiles[index].mappings.buttonBindings[RemoteButton.mute.rawValue] =
+            ButtonAction.returnKey
+        remoteDeviceProfiles[index].mappings.buttonShortcuts.removeValue(
+            forKey: RemoteButton.mute.rawValue
+        )
+        remoteDeviceProfiles[index].mappings.buttonApplicationProfileIDs?.removeValue(
+            forKey: RemoteButton.mute.rawValue
+        )
+        if selectedRemoteProfileID == remoteDeviceProfiles[index].id {
+            buttonBindings[.mute] = .returnKey
+            buttonShortcuts.removeValue(forKey: .mute)
+            buttonApplicationProfileIDs.removeValue(forKey: .mute)
+        }
     }
 
     private struct RemoteProfileDeduplicationResult {

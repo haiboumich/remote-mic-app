@@ -445,7 +445,7 @@ struct OnboardingFlowTests {
             .back, .volumeUp, .volumeDown, .tv, .playPause, .mute,
         ])
         #expect(Set(try #require(OnboardingView.displayedControlButtons(for: .chromecastRemote))) == [
-            .power, .up, .left, .ok, .right, .down, .back,
+            .power, .up, .down, .back,
             .home, .volumeUp, .volumeDown, .mute, .youtube, .netflix, .input,
         ])
 
@@ -1326,16 +1326,12 @@ struct OnboardingFlowTests {
         ))
     }
 
-    @Test func publicChromecastUsesVoiceEvidenceAndSkipsOrdinaryControls() {
-        #expect(!ChromecastFeatureIntegration.publicDeclaredCapabilities.contains(.controlEdges))
-        guard !ChromecastFeatureIntegration.supportsOrdinaryControlEdges else {
-            // A private build has a paired adapter that emits ordinary control
-            // edges, so it intentionally keeps the normal three-button gate.
-            return
-        }
+    @Test func publicChromecastRequiresOrdinaryControlEvidence() {
+        #expect(ChromecastFeatureIntegration.publicDeclaredCapabilities.contains(.controlEdges))
+        #expect(ChromecastFeatureIntegration.supportsOrdinaryControlEdges)
 
         var capabilities = OnboardingCapabilities(remoteConnected: true)
-        #expect(!OnboardingRemoteEvidencePolicy.requiresOrdinaryButtonObservation(
+        #expect(OnboardingRemoteEvidencePolicy.requiresOrdinaryButtonObservation(
             for: .chromecastRemote
         ))
         #expect(!OnboardingFlowPolicy.canContinue(
@@ -1346,21 +1342,22 @@ struct OnboardingFlowTests {
         ))
 
         capabilities.remoteButtonObserved = true
-        #expect(!OnboardingFlowPolicy.canContinue(
-            from: .remote,
-            voiceTool: .typeless,
-            controlSource: .chromecastRemote,
-            capabilities: capabilities
-        ))
-
-        capabilities.remoteButtonObserved = false
-        capabilities.remoteVoiceButtonObserved = true
         #expect(OnboardingFlowPolicy.canContinue(
             from: .remote,
             voiceTool: .typeless,
             controlSource: .chromecastRemote,
             capabilities: capabilities
         ))
+
+        capabilities.remoteVoiceButtonObserved = true
+        #expect(!OnboardingFlowPolicy.canContinue(
+            from: .controls,
+            voiceTool: .typeless,
+            controlSource: .chromecastRemote,
+            capabilities: capabilities
+        ))
+
+        capabilities.testedRemoteButtonCount = 3
         #expect(OnboardingFlowPolicy.canContinue(
             from: .controls,
             voiceTool: .typeless,
@@ -1376,15 +1373,16 @@ struct OnboardingFlowTests {
         )
         #expect(remoteContext.failureReason == nil)
 
-        capabilities.remoteVoiceButtonObserved = false
-        let missingVoiceContext = FirstUseDiagnosticContext(
+        capabilities.remoteButtonObserved = false
+        let missingButtonContext = FirstUseDiagnosticContext(
             step: .remote,
             controlSource: .chromecastRemote,
             capabilities: capabilities,
             hasSelectedAudioUID: false
         )
-        #expect(missingVoiceContext.failureReason == .remoteButtonNotReady)
+        #expect(missingButtonContext.failureReason == .remoteButtonNotReady)
 
+        capabilities.remoteButtonObserved = true
         let controlsContext = FirstUseDiagnosticContext(
             step: .controls,
             controlSource: .chromecastRemote,

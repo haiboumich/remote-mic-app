@@ -9404,10 +9404,10 @@ final class BridgeAppModel: NSObject, ObservableObject, XiaomiBluetoothBridgeDel
         return names.isEmpty ? "none" : names.joined(separator: "+")
     }
 
-    // MARK: - Chromecast 硬件（可选私有包）
+    // MARK: - Chromecast 硬件（公开 GATT 或可选私有包）
     //
     // 与 Siri Remote 链路完全隔离：独立 owner（`.chromecast`）、独立会话与排空操作号，
-    // 一方结束不会取消另一方。私有包缺失时本段全部不会被编译进来。
+    // 一方结束不会取消另一方。公开构建使用本仓库内的 CoreBluetooth 适配器。
 
     #if SAYALL_CHROMECAST_ENABLED
     /// 设置页「重新连接」。
@@ -9852,7 +9852,7 @@ final class BridgeAppModel: NSObject, ObservableObject, XiaomiBluetoothBridgeDel
 
     // MARK: - Chromecast 普通按键（键位映射）
     //
-    // 与语音链路是两条独立的通道：语音走 ATVV，按键走 HID。两者各自维护自己的活动状态，
+    // 与语音链路是两条独立的通道：语音走 ATVV，公开按键走 HID-over-GATT。两者各自维护自己的活动状态，
     // 一方结束不会清除另一方的状态。
 
     private func handleChromecastControlEvent(_ event: ChromecastRemoteControlEvent) {
@@ -9910,11 +9910,13 @@ final class BridgeAppModel: NSObject, ObservableObject, XiaomiBluetoothBridgeDel
             return
         }
 
-        guard chromecastNativeKeyMapper.isPrepared else {
+        guard chromecastNativeKeyMapper.isPrepared ||
+                !ChromecastFeatureIntegration.requiresNativeInputPreparation else {
             AppLogger.shared.write("CHROMECAST ACTION rejected reason=native_input_not_verified")
             return
         }
-        // 使用与画布、键位方案相同的保留策略；当前全部普通键可配置。
+        // 使用与画布、键位方案相同的保留策略。公开构建没有 DriverKit
+        // 系统扩展，因此 AACP 直接消费的 left/right/select 必须始终由系统管理。
         if ChromecastRemoteControl.isSystemManaged(
             event.control,
             allowSystemReservedKeys: settings.chromecastAllowSystemReservedKeys,
@@ -9927,7 +9929,31 @@ final class BridgeAppModel: NSObject, ObservableObject, XiaomiBluetoothBridgeDel
             }
             return
         }
-        // 原生用法已在设备激活前屏蔽。不要留下会吞掉电脑键盘的延迟拦截次数。
+        // 私有原生映射可在设备激活前屏蔽普通 HID 用法。公开 GATT 路径没有
+        // 这层系统服务；对静音/音量这类会产生 NX_SYSDEFINED 的安全按键，使用
+        // 已验证的 CGEvent 抑制器吞掉原生副作用，再执行用户映射。
+        if !chromecastNativeKeyMapper.isPrepared {
+            let nativeEvents = chromecastNativeEvents(for: event.control)
+            if !nativeEvents.isEmpty {
+                if !hidEventSuppressor.isRunning {
+                    let ready = hidEventSuppressor.start()
+                    AppLogger.shared.write("HID FILTER ready=\(ready) owner=chromecast_gatt")
+                }
+                guard hidEventSuppressor.isRunning else {
+                    if isPress {
+                        AppLogger.shared.write(
+                            "CHROMECAST ACTION phase=failed result=input_monitoring_required " +
+                                "control=\(controlID)"
+                        )
+                    }
+                    return
+                }
+                hidEventSuppressor.arm(
+                    nativeEvents: nativeEvents,
+                    edge: isPress ? .down : .up
+                )
+            }
+        }
         if isPress {
             selectRemoteProfile(profileID)
             chromecastPressedControls.insert(controlID)
@@ -9952,7 +9978,8 @@ final class BridgeAppModel: NSObject, ObservableObject, XiaomiBluetoothBridgeDel
     ///
     /// 与小米 RC001/RC003 的通用表存在差异：**静音键在系统侧是 `systemKey(7)`**（通用表按小米记录为 3），
     /// 沿用通用表时抑制必然 miss、系统音量 HUD 照常出现。其余按键实测与通用表一致：
-    /// 音量 = sys0/sys1（抑制命中）、方向/确认键系统侧不产生事件（tap 零记录，无副作用）。
+    /// 音量 = sys0/sys1（抑制命中）；方向/确认在 CGEvent 层没有事件，但其中
+    /// left/right/select 仍会被 AACP 在更低层消费，因此公开构建固定为系统管理。
     private func chromecastNativeEvents(for control: ChromecastRemoteControl) -> Set<RemoteNativeEvent> {
         switch control {
         case .mute: return [.systemKey(type: 7)]

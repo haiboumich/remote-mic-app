@@ -51,6 +51,16 @@ scratch/cache 构建 App；虚拟音频驱动也会从固定 BlackHole commit �
 DMG、Installer payload 与包内源码 commit。它不会读取已有 `.build`、已安装 App 或
 已安装驱动作为构建输入。
 
+个人真机迭代若已经明确只要求本次 Chromecast 改动的定向回归，可使用：
+
+```zsh
+make dmg DMG_TEST_MODE=targeted
+```
+
+该模式只运行 `ChromecastRemoteIdentityTests`、`ChromecastIntegrationTests`、
+`OnboardingFlowTests` 和 `LocalizationTests`，之后仍执行 App、Installer、DMG 与包内 commit
+校验。它不会改变默认 `make dmg` 的完整测试合同，交付时必须明确标注本包只跑了定向测试。
+
 输出位置：
 
 - `make dmg` 的最终交付物：`build/SayAll-<version>-<build>.dmg`

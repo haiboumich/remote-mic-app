@@ -136,9 +136,9 @@
 "chromecast.mapping.voice.fixed" = "固定语音输入";
 "chromecast.mapping.voice.detail" = "用语音键直接使用遥控器麦克风传输语音；该键不能作为普通按键重新配置。";
 "chromecast.mapping.photo.missing" = "Chromecast 遥控器图片不可用";
-"chromecast.mapping.system.left" = "上一首";
-"chromecast.mapping.system.right" = "下一首";
-"chromecast.mapping.system.select" = "播放/暂停";
+"chromecast.mapping.system.left" = "macOS 上一首（不可映射）";
+"chromecast.mapping.system.right" = "macOS 下一首（不可映射）";
+"chromecast.mapping.system.select" = "macOS 播放/暂停（不可映射）";
 "keyboard.key_code" = "按键 %1$@";
 "keyboard.key.return" = "Return（回车）";
 "keyboard.modifier.left" = "左";
@@ -969,12 +969,14 @@
 "onboarding.remote.searching_detail" = "保持遥控器靠近 Mac；首次连接按上方步骤操作，已配对时按任意键唤醒。";
 "onboarding.remote.button_waiting" = "等待控制按键";
 "onboarding.remote.button_waiting_detail" = "请短按圆盘中间的确定键或任意方向键，不要按麦克风/语音键。";
+"onboarding.remote.chromecast.button_waiting_detail" = "请短按静音、返回、主页或上/下键，不要按左、右、确定或语音键。";
 "onboarding.remote.button_received" = "已收到控制按键";
 "onboarding.remote.button_detail" = "语音键以外的任意普通按键都可以。";
 "onboarding.remote.voice_button_mistake.title" = "刚才按的是语音键";
 "onboarding.remote.voice_button_mistake.detail" = "这一步检查普通控制键。请改为短按圆盘中间的确定键或任意方向键。";
+"onboarding.remote.chromecast.voice_button_mistake.detail" = "这一步检查普通控制键。请改为短按静音、返回、主页或上/下键。";
 "onboarding.remote.voice_only.waiting" = "等待语音键";
-"onboarding.remote.voice_only.waiting_detail" = "请按住 Chromecast 遥控器上的语音/Assistant 键；当前公开适配器不会接管方向键或确认键。";
+"onboarding.remote.voice_only.waiting_detail" = "请按住 Chromecast 遥控器上的语音/Assistant 键；左、右和确定仍由 macOS 接管。";
 "onboarding.remote.voice_only.received" = "已收到语音键";
 "onboarding.remote.voice_only.received_detail" = "Chromecast 语音链路已经响应，可以继续配置音频输出。";
 "onboarding.remote.reconnect" = "重新查找";
@@ -1038,7 +1040,7 @@
 "onboarding.controls.detail" = "连续按下三个不同的普通按键，感受方向、确认、返回、主页或音量控制。";
 "onboarding.controls.xiaomi.detail" = "在小米遥控器上连续按下三个不同的普通按键，例如方向、确定、返回、主页或音量。";
 "onboarding.controls.siri.detail" = "在苹果遥控器上连续按下三个不同的普通按键，例如方向、中心、返回、TV、播放或音量。";
-"onboarding.controls.chromecast.detail" = "在 Chromecast 遥控器上连续按下三个不同的普通按键，例如方向、确定、返回、主页、静音或音量。";
+"onboarding.controls.chromecast.detail" = "在 Chromecast 遥控器上按下三个不同的安全按键，例如静音、返回、主页、上/下或音量；左、右、确定由 macOS 接管。";
 "onboarding.controls.apple_companion.detail" = "在 iPhone 或 Apple Watch 遥控器中点按三个不同的普通控制，例如方向、确定、返回或音量。";
 "onboarding.controls.web_remote.detail" = "在无线麦 SayAll 中点按三个不同的普通控制，例如方向、确定、返回或音量。";
 "onboarding.controls.mobile_slot" = "第 %@ 个不同控制";

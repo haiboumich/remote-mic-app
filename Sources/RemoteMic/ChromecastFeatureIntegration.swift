@@ -157,9 +157,17 @@ enum ChromecastRemoteControl: String, CaseIterable, Equatable {
     /// 画布用的控制 ID。与 `ChromecastMappingCanvas.configurableControlIDs` 同值。
     var canvasControlID: String { rawValue }
 
-    /// 当前产品允许全部普通键配置，包含左、确定、右。
-    /// 历史豁免设置继续可读，但不得再次限制这三键。
-    static let systemReservedControls: Set<ChromecastRemoteControl> = []
+    /// AACP consumes these three controls below the user-space event tap. The
+    /// public/offline adapter must never promise that it can remap them without
+    /// also triggering macOS media behavior. Private signed integrations keep
+    /// their existing policy and may provide a lower-level implementation.
+    static let systemReservedControls: Set<ChromecastRemoteControl> = {
+        #if SAYALL_CHROMECAST_ENABLED && canImport(SayAllChromecast)
+        []
+        #else
+        [.left, .right, .select]
+        #endif
+    }()
 
     /// 该键此刻是否仍交给系统。主开关全放开；`exceptions` 逐颗放开（两者相加生效）。
     static func isSystemManaged(
@@ -168,7 +176,13 @@ enum ChromecastRemoteControl: String, CaseIterable, Equatable {
         exceptions: Set<String> = []
     ) -> Bool {
         guard systemReservedControls.contains(control) else { return false }
+        #if SAYALL_CHROMECAST_ENABLED && canImport(SayAllChromecast)
         return !(allowSystemReservedKeys || exceptions.contains(control.rawValue))
+        #else
+        // Legacy escape-hatch preferences cannot override a platform boundary
+        // that the public app has no system extension to enforce.
+        return true
+        #endif
     }
 
     /// 给画布用的置灰表：从默认表里去掉已放开的键。
@@ -200,10 +214,14 @@ struct ChromecastRemoteControlEvent: Equatable {
 /// 隔离保证：本类型与 Siri Remote 接入层互不引用；私有包缺失时全部方法退化为 no-op，
 /// 宿主的编译、运行和打包都不受影响。
 final class ChromecastFeatureIntegration {
-    static let publicDeclaredCapabilities: ChromecastDeclaredCapabilities = [.voiceStream]
+    static let publicDeclaredCapabilities: ChromecastDeclaredCapabilities = [
+        .controlEdges,
+        .voiceStream,
+    ]
 
-    /// Public/offline builds intentionally expose only the ATVV voice stream.
-    /// The private integration can additionally emit paired ordinary-button edges.
+    /// Both adapters can emit paired ordinary-button edges. The public adapter
+    /// obtains them from the verified HID-over-GATT Report characteristic and
+    /// publishes the runtime capability only after that subscription is ready.
     static var supportsOrdinaryControlEdges: Bool {
         #if SAYALL_CHROMECAST_ENABLED && canImport(SayAllChromecast)
         return true
@@ -220,9 +238,16 @@ final class ChromecastFeatureIntegration {
         #endif
     }
     static var nativeInputProductIDs: Set<Int> {
-        // HID control mapping has not yet been brought into the public adapter.
-        // Do not rewrite native mappings until that path can emit paired edges.
+        // The public adapter consumes GATT reports and does not seize or rewrite
+        // the macOS virtual HID device. Private packages own their own product IDs.
         return []
+    }
+    static var requiresNativeInputPreparation: Bool {
+        #if SAYALL_CHROMECAST_ENABLED && canImport(SayAllChromecast)
+        true
+        #else
+        false
+        #endif
     }
     var prepareNativeInput: (([UInt64]) -> Bool)? {
         didSet {
@@ -307,6 +332,12 @@ final class ChromecastFeatureIntegration {
         feature.onVoiceStop = { [weak self] reason in
             self?.onVoiceStop?(reason)
         }
+        feature.onControlEvent = { [weak self] event in
+            self?.onControlEvent?(event)
+        }
+        feature.onHIDPresenceChange = { [weak self] isPresent in
+            self?.onHIDPresenceChange?(isPresent)
+        }
         feature.onSamples = { [weak self] samples, generation in
             self?.onSamples?(samples, generation)
         }
@@ -351,23 +382,24 @@ final class ChromecastFeatureIntegration {
         #endif
     }
 
-    /// 宿主「按键映射」总开关。开启后私有包独占该遥控器的 HID 设备，关闭时只观察。
+    /// 宿主「按键映射」总开关。私有包可据此独占 HID；公开适配器继续观察
+    /// GATT 边沿供新手引导取证，而宿主在关闭时不执行配置动作。
     ///
-    /// 缺包时 no-op。幂等，可安全重复调用。
+    /// 幂等，可安全重复调用。
     func setControlMappingEnabled(_ enabled: Bool) {
         #if SAYALL_CHROMECAST_ENABLED && canImport(SayAllChromecast)
         feature.setControlMappingEnabled(enabled)
         #else
-        if enabled { onLog?("CHROMECAST HID mapping=deferred reason=public_adapter_voice_only") }
+        feature.setControlMappingEnabled(enabled)
         #endif
     }
 
-    /// HID 侧是否已看到本遥控器。缺包时恒为 false。
+    /// HID/GATT 控制侧是否已看到本遥控器。
     var isHIDRemotePresent: Bool {
         #if SAYALL_CHROMECAST_ENABLED && canImport(SayAllChromecast)
         return feature.isHIDRemotePresent
         #else
-        return false
+        return feature.isHIDRemotePresent
         #endif
     }
 

@@ -79,15 +79,32 @@ export REQUIRE_RELEASE_BUILD_CHANNEL=0
 export REQUIRE_CLIENT_PROOF_KEY=0
 export SAYALL_TEST_BUTTON_PROFILES_FREE=0
 
-REMOTE_MIC_SELF_TEST_OUTPUT="$WORK_ROOT/self-test/RemoteMicSelfTest" \
-REMOTE_MIC_TEST_SCRATCH_PATH="$WORK_ROOT/self-test-swiftpm" \
-REMOTE_MIC_TEST_CACHE_PATH="$WORK_ROOT/self-test-cache" \
-SKIP_SWIFT_PACKAGE_BUILD=0 \
-  "$ROOT/scripts/test.sh"
-xcrun swift test \
-  --disable-keychain \
-  --scratch-path "$WORK_ROOT/swift-tests" \
-  --cache-path "$WORK_ROOT/swift-test-cache"
+TEST_MODE="${SAYALL_OFFLINE_DMG_TEST_MODE:-full}"
+case "$TEST_MODE" in
+  full)
+    REMOTE_MIC_SELF_TEST_OUTPUT="$WORK_ROOT/self-test/RemoteMicSelfTest" \
+    REMOTE_MIC_TEST_SCRATCH_PATH="$WORK_ROOT/self-test-swiftpm" \
+    REMOTE_MIC_TEST_CACHE_PATH="$WORK_ROOT/self-test-cache" \
+    SKIP_SWIFT_PACKAGE_BUILD=0 \
+      "$ROOT/scripts/test.sh"
+    xcrun swift test \
+      --disable-keychain \
+      --scratch-path "$WORK_ROOT/swift-tests" \
+      --cache-path "$WORK_ROOT/swift-test-cache"
+    ;;
+  targeted)
+    print "OFFLINE DMG TEST MODE: targeted Chromecast regression"
+    xcrun swift test \
+      --disable-keychain \
+      --scratch-path "$WORK_ROOT/swift-tests" \
+      --cache-path "$WORK_ROOT/swift-test-cache" \
+      --filter 'ChromecastRemoteIdentityTests|ChromecastIntegrationTests|OnboardingFlowTests|LocalizationTests'
+    ;;
+  *)
+    print -u2 "SAYALL_OFFLINE_DMG_TEST_MODE must be full or targeted"
+    exit 2
+    ;;
+esac
 
 if [[ "$REQUESTED_VARIANT" == "native" ]]; then
   if [[ "$(/usr/bin/uname -m)" == "arm64" ]]; then

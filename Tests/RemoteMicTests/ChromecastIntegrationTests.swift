@@ -219,19 +219,19 @@ struct ChromecastIntegrationTests {
         #expect(Set(ChromecastRemoteControl.allCases.map(\.remoteButton)).count == expected.count)
     }
 
-    // MARK: - 左、确定、右默认可用
+    // MARK: - public/offline AACP 系统占用边界
 
-    @Test func navigationKeysRemainAvailableWithEveryLegacyPreference() {
+    @Test func navigationKeysStaySystemManagedDespiteLegacyPreferences() {
         for allow in [false, true] {
             for exceptions: Set<String> in [[], ["left"], ["left", "right", "select"]] {
                 for control: ChromecastRemoteControl in [.left, .select, .right] {
-                    #expect(!ChromecastRemoteControl.isSystemManaged(
+                    #expect(ChromecastRemoteControl.isSystemManaged(
                         control, allowSystemReservedKeys: allow, exceptions: exceptions
                     ))
                 }
                 #expect(ChromecastRemoteControl.canvasReservedControlIDs(
                     allowSystemReservedKeys: allow, exceptions: exceptions
-                ).isEmpty)
+                ) == ["left", "right", "select"])
             }
         }
         #expect(!ChromecastRemoteControl.isSystemManaged(.volumeUp, allowSystemReservedKeys: false))
@@ -276,7 +276,7 @@ struct ChromecastIntegrationTests {
 
     /// Chromecast 设备档案按型号识别并且可重复注册，否则每次连接都会新建一个档案、丢掉映射。
     @Test func chromecastProfileRegistrationIsIdempotent() throws {
-        let suiteName = "RemoteMicTests.ChromecastProfile.(UUID().uuidString)"
+        let suiteName = "RemoteMicTests.ChromecastProfile.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let settings = AppSettings(defaults: defaults)
@@ -288,7 +288,61 @@ struct ChromecastIntegrationTests {
         #expect(settings.selectedRemoteProfile?.model == .chromecastVoiceRemote)
         let profile = try #require(settings.remoteDeviceProfiles.first(where: { $0.id == first }))
         #expect(profile.model == .chromecastVoiceRemote)
+        #expect(profile.mappings.parsedButtonBindings[.mute] == .returnKey)
         #expect(settings.remoteDeviceProfiles.filter { $0.model == .chromecastVoiceRemote }.count == 1)
+    }
+
+    @Test func legacyMuteDefaultMigratesOnceAndLaterUserChoiceSurvives() throws {
+        let suiteName = "RemoteMicTests.ChromecastMuteMigration.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let profile = RemoteDeviceProfile(
+            model: .chromecastVoiceRemote,
+            mappings: RemoteDeviceMappings(
+                buttonBindings: AppSettings.defaultBindings,
+                buttonShortcuts: [:],
+                secondaryButtonBindings: [:]
+            )
+        )
+        defaults.set(try JSONEncoder().encode([profile]), forKey: "remoteDeviceProfiles")
+        defaults.set(profile.id.uuidString, forKey: "selectedRemoteProfileID")
+
+        let settings = AppSettings(defaults: defaults)
+        #expect(settings.action(for: .mute) == .volumeMute)
+        let registered = settings.registerChromecastRemote()
+        #expect(registered == profile.id)
+        #expect(settings.action(for: .mute) == .returnKey)
+        #expect(defaults.integer(forKey: "chromecast.muteReturnMigrationVersion") == 1)
+        #expect(defaults.data(forKey: "chromecastMuteReturnMigrationBackup") != nil)
+
+        settings.setAction(.volumeMute, for: .mute)
+        #expect(settings.action(for: .mute) == .volumeMute)
+        #expect(settings.registerChromecastRemote() == profile.id)
+        #expect(settings.action(for: .mute) == .volumeMute)
+    }
+
+    @Test func oneTimeMuteMigrationPreservesExistingNonDefaultAction() throws {
+        let suiteName = "RemoteMicTests.ChromecastMuteCustom.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        var bindings = AppSettings.defaultBindings
+        bindings[.mute] = .commandCopy
+        let profile = RemoteDeviceProfile(
+            model: .chromecastVoiceRemote,
+            mappings: RemoteDeviceMappings(
+                buttonBindings: bindings,
+                buttonShortcuts: [:],
+                secondaryButtonBindings: [:]
+            )
+        )
+        defaults.set(try JSONEncoder().encode([profile]), forKey: "remoteDeviceProfiles")
+        defaults.set(profile.id.uuidString, forKey: "selectedRemoteProfileID")
+
+        let settings = AppSettings(defaults: defaults)
+        _ = settings.registerChromecastRemote()
+        #expect(settings.action(for: .mute) == .commandCopy)
+        #expect(defaults.integer(forKey: "chromecast.muteReturnMigrationVersion") == 1)
+        #expect(defaults.data(forKey: "chromecastMuteReturnMigrationBackup") == nil)
     }
 
     // MARK: - 按键页接线契约
@@ -310,10 +364,14 @@ struct ChromecastIntegrationTests {
         // 按键页必须按型号分派到 Chromecast 画布，且整块受私有包门禁保护。
         #expect(settingsView.contains("chromecastMappingPage"))
         #expect(settingsView.contains("canImport(SayAllChromecast)"))
+        #expect(settingsView.contains("chromecastSystemManagedButtons"))
+        #expect(settingsView.contains("profileScopeReservedButtons.union("))
         // 映射总开关必须真的推给 HID 通道：独占与否决定了按键是被宿主还是被系统消费。
         #expect(modelSource.contains(
             "chromecastFeature.setControlMappingEnabled(settings.customMappingEnabled)"
         ))
+        #expect(modelSource.contains("hidEventSuppressor.arm("))
+        #expect(modelSource.contains("chromecastNativeEvents(for: event.control)"))
         // 私有包档案不得被小米 HID 发现链路当成候选。
         #expect(modelSource.contains("!profile.model.usesPrivateAdapter"))
         // 按键事件必须接到执行链路上，而不是只更新界面状态。

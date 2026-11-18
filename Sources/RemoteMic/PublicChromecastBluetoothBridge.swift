@@ -26,6 +26,89 @@ enum ChromecastATVVControl {
     }
 }
 
+/// Decodes the confirmed A0 remote's HID-over-GATT input report.
+///
+/// The report characteristic sends eight-byte Array reports: byte zero is the
+/// physical control usage and the remaining bytes are zero. A zero usage is the
+/// release edge. Keeping this state machine outside CoreBluetooth makes paired
+/// edge and cancellation behavior deterministic and directly testable.
+struct ChromecastGATTControlDecoder {
+    private(set) var activeControl: ChromecastRemoteControl?
+    private(set) var sequence = 0
+
+    mutating func ingest(_ data: Data) -> [ChromecastRemoteControlEvent] {
+        guard data.count == 8, data.dropFirst().allSatisfy({ $0 == 0 }) else {
+            return cancel(reason: "malformed_report").map { [$0] } ?? []
+        }
+        guard let usage = data.first else { return [] }
+        guard usage != 0 else {
+            guard let activeControl else { return [] }
+            self.activeControl = nil
+            return [event(control: activeControl, phase: .ended)]
+        }
+        guard let control = Self.control(for: usage) else {
+            return cancel(reason: "unsupported_usage").map { [$0] } ?? []
+        }
+        guard control != activeControl else { return [] }
+
+        var events: [ChromecastRemoteControlEvent] = []
+        if let activeControl {
+            events.append(event(
+                control: activeControl,
+                phase: .cancelled,
+                cancellationReason: "replaced_by_new_press"
+            ))
+        }
+        self.activeControl = control
+        events.append(event(control: control, phase: .began))
+        return events
+    }
+
+    mutating func cancel(reason: String) -> ChromecastRemoteControlEvent? {
+        guard let activeControl else { return nil }
+        self.activeControl = nil
+        return event(
+            control: activeControl,
+            phase: .cancelled,
+            cancellationReason: reason
+        )
+    }
+
+    static func control(for usage: UInt8) -> ChromecastRemoteControl? {
+        switch usage {
+        case 0x01: return .power
+        case 0x03: return .up
+        case 0x04: return .down
+        case 0x05: return .left
+        case 0x06: return .right
+        case 0x07: return .select
+        case 0x08: return .mute
+        case 0x0A: return .home
+        case 0x0B: return .back
+        case 0x0C: return .volumeUp
+        case 0x0D: return .volumeDown
+        case 0x0E: return .youtube
+        case 0x0F: return .netflix
+        case 0x11: return .input
+        default: return nil
+        }
+    }
+
+    private mutating func event(
+        control: ChromecastRemoteControl,
+        phase: ChromecastRemoteControlPhase,
+        cancellationReason: String? = nil
+    ) -> ChromecastRemoteControlEvent {
+        sequence &+= 1
+        return ChromecastRemoteControlEvent(
+            control: control,
+            phase: phase,
+            sequence: sequence,
+            cancellationReason: cancellationReason
+        )
+    }
+}
+
 /// Public, local-only ATVV receiver for the confirmed Google Chromecast remote.
 /// It is intentionally narrow: shared ATVV UUIDs, renamed devices, unverified
 /// DIS values and unsupported codecs never become a usable connection.
@@ -34,6 +117,8 @@ final class PublicChromecastBluetoothBridge: NSObject, CBCentralManagerDelegate,
     var onDeclaredCapabilitiesChange: ((ChromecastDeclaredCapabilities) -> Void)?
     var onVoiceStart: (() -> Void)?
     var onVoiceStop: ((ChromecastVoiceEndReason) -> Void)?
+    var onControlEvent: ((ChromecastRemoteControlEvent) -> Void)?
+    var onHIDPresenceChange: ((Bool) -> Void)?
     var onSamples: (([Int16], Int) -> Void)?
     var onLog: ((String) -> Void)?
 
@@ -44,6 +129,8 @@ final class PublicChromecastBluetoothBridge: NSObject, CBCentralManagerDelegate,
     private let deviceInformationUUID = CBUUID(string: "180A")
     private let manufacturerUUID = CBUUID(string: "2A29")
     private let modelUUID = CBUUID(string: "2A24")
+    private let hidServiceUUID = CBUUID(string: "1812")
+    private let hidReportUUID = CBUUID(string: "2A4D")
 
     private var central: CBCentralManager?
     private var peripheral: CBPeripheral?
@@ -52,6 +139,13 @@ final class PublicChromecastBluetoothBridge: NSObject, CBCentralManagerDelegate,
     private var manufacturer: String?
     private var model: String?
     private var subscribed = Set<CBUUID>()
+    private var subscribedHIDReports = Set<ObjectIdentifier>()
+    /// A HID service can expose more than one Report characteristic. Keep one
+    /// decoder per notification channel so an unrelated channel's zero report
+    /// cannot release a button that was pressed on the actual control channel.
+    private var controlDecoders: [ObjectIdentifier: ChromecastGATTControlDecoder] = [:]
+    private(set) var isHIDRemotePresent = false
+    private var controlMappingEnabled = false
     private var decoder = IMAADPCMDecoder()
     private var frames = FrameAccumulator()
     private var pendingSync: (predictor: Int, stepIndex: Int)?
@@ -86,6 +180,7 @@ final class PublicChromecastBluetoothBridge: NSObject, CBCentralManagerDelegate,
         central?.stopScan()
         if let peripheral, peripheral.state != .disconnected { central?.cancelPeripheralConnection(peripheral) }
         resetSession(reason: .hostStop)
+        resetControls(reason: "host_stop")
         peripheral = nil
         transmit = nil
         central?.delegate = nil
@@ -109,10 +204,17 @@ final class PublicChromecastBluetoothBridge: NSObject, CBCentralManagerDelegate,
         resetSession(reason: .hostStop)
     }
 
+    func setControlMappingEnabled(_ enabled: Bool) {
+        guard controlMappingEnabled != enabled else { return }
+        controlMappingEnabled = enabled
+        onLog?("CHROMECAST GATT mapping=\(enabled ? "enabled" : "disabled") result=applied")
+    }
+
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
         guard self.central === central, shouldRun, !blockedByFailure else { return }
         guard central.state == .poweredOn else {
             resetSession(reason: .cancelled("central_unavailable"))
+            resetControls(reason: "central_unavailable")
             onDeclaredCapabilitiesChange?([])
             onStatusChange?(.unauthorized)
             onLog?("CHROMECAST BLE phase=unavailable result=failed reason=central_not_powered")
@@ -159,15 +261,17 @@ final class PublicChromecastBluetoothBridge: NSObject, CBCentralManagerDelegate,
         manufacturer = nil
         model = nil
         subscribed.removeAll()
+        resetControls(reason: "reconnecting")
         peripheral.delegate = self
         onStatusChange?(.searching)
-        peripheral.discoverServices([serviceUUID, deviceInformationUUID])
+        peripheral.discoverServices([serviceUUID, deviceInformationUUID, hidServiceUUID])
     }
 
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
         guard self.peripheral === peripheral else { return }
         self.peripheral = nil
         resetSession(reason: .cancelled("connect_failed"))
+        resetControls(reason: "connect_failed")
         onDeclaredCapabilitiesChange?([])
         onStatusChange?(.disconnected)
         onLog?("CHROMECAST BLE phase=connecting result=failed reason=connect_failed retry_delay_ms=2000")
@@ -182,6 +286,7 @@ final class PublicChromecastBluetoothBridge: NSObject, CBCentralManagerDelegate,
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
         guard self.peripheral === peripheral else { return }
         resetSession(reason: .cancelled("disconnect"))
+        resetControls(reason: "disconnect")
         self.peripheral = nil
         transmit = nil
         onDeclaredCapabilitiesChange?([])
@@ -199,10 +304,30 @@ final class PublicChromecastBluetoothBridge: NSObject, CBCentralManagerDelegate,
         }
         peripheral.discoverCharacteristics([transmitUUID, audioUUID, controlUUID], for: voice)
         peripheral.discoverCharacteristics([manufacturerUUID, modelUUID], for: information)
+        if let hid = peripheral.services?.first(where: { $0.uuid == hidServiceUUID }) {
+            peripheral.discoverCharacteristics([hidReportUUID], for: hid)
+        } else {
+            onLog?("CHROMECAST GATT phase=service_discovery result=unavailable reason=hid_service_missing")
+        }
     }
 
     func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
         guard self.peripheral === peripheral, shouldRun, !blockedByFailure else { return }
+        if service.uuid == hidServiceUUID {
+            guard error == nil else {
+                onLog?("CHROMECAST GATT phase=characteristic_discovery result=unavailable reason=discovery_failed")
+                return
+            }
+            let reports = (service.characteristics ?? []).filter {
+                $0.uuid == hidReportUUID && ($0.properties.contains(.notify) || $0.properties.contains(.indicate))
+            }
+            guard !reports.isEmpty else {
+                onLog?("CHROMECAST GATT phase=characteristic_discovery result=unavailable reason=input_report_missing")
+                return
+            }
+            reports.forEach { peripheral.setNotifyValue(true, for: $0) }
+            return
+        }
         guard error == nil else { fail("characteristic_discovery"); return }
         if service.uuid == deviceInformationUUID {
             let found = Set((service.characteristics ?? []).map(\.uuid))
@@ -232,6 +357,24 @@ final class PublicChromecastBluetoothBridge: NSObject, CBCentralManagerDelegate,
 
     func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
         guard self.peripheral === peripheral, shouldRun, !blockedByFailure else { return }
+        if characteristic.uuid == hidReportUUID {
+            let identifier = ObjectIdentifier(characteristic)
+            if error == nil, characteristic.isNotifying {
+                subscribedHIDReports.insert(identifier)
+                controlDecoders[identifier] = controlDecoders[identifier]
+                    ?? ChromecastGATTControlDecoder()
+                updateControlAvailability()
+            } else {
+                subscribedHIDReports.remove(identifier)
+                if var decoder = controlDecoders.removeValue(forKey: identifier),
+                   let cancelled = decoder.cancel(reason: "notification_stopped") {
+                    onControlEvent?(cancelled)
+                }
+                updateControlAvailability()
+                onLog?("CHROMECAST GATT phase=subscription result=unavailable reason=notification_failed")
+            }
+            return
+        }
         guard error == nil, characteristic.isNotifying else { fail("notification_subscription"); return }
         guard characteristic.uuid == audioUUID || characteristic.uuid == controlUUID else { return }
         subscribed.insert(characteristic.uuid)
@@ -247,6 +390,10 @@ final class PublicChromecastBluetoothBridge: NSObject, CBCentralManagerDelegate,
         guard error == nil, let value = characteristic.value else { return }
         if characteristic.uuid == manufacturerUUID { manufacturer = String(data: value, encoding: .utf8); requestCapabilitiesIfReady(); return }
         if characteristic.uuid == modelUUID { model = String(data: value, encoding: .utf8); requestCapabilitiesIfReady(); return }
+        if characteristic.uuid == hidReportUUID {
+            handleHIDReport(value, from: characteristic)
+            return
+        }
         if characteristic.uuid == controlUUID { handleControl(value); return }
         if characteristic.uuid == audioUUID { handleAudio(value) }
     }
@@ -284,8 +431,8 @@ final class PublicChromecastBluetoothBridge: NSObject, CBCentralManagerDelegate,
                 return
             }
             capabilities = parsed
-            // This public adapter has no ordinary HID button edges yet.
-            onDeclaredCapabilitiesChange?(ChromecastFeatureIntegration.publicDeclaredCapabilities)
+            publishDeclaredCapabilities()
+            updateControlAvailability()
             onStatusChange?(.connected(displayName: ChromecastRemoteIdentity.bluetoothName))
             onLog?("CHROMECAST ATVV phase=ready result=passed sample_rate_hz=16000 frame_bytes=\(parsed.frameSize)")
         case 0x04:
@@ -352,6 +499,54 @@ final class PublicChromecastBluetoothBridge: NSObject, CBCentralManagerDelegate,
         }
     }
 
+    private func handleHIDReport(_ data: Data, from characteristic: CBCharacteristic) {
+        guard capabilities != nil else { return }
+        let identifier = ObjectIdentifier(characteristic)
+        guard subscribedHIDReports.contains(identifier) else { return }
+        var decoder = controlDecoders[identifier] ?? ChromecastGATTControlDecoder()
+        let events = decoder.ingest(data)
+        controlDecoders[identifier] = decoder
+        for event in events {
+            onControlEvent?(event)
+        }
+    }
+
+    private func updateControlAvailability() {
+        let available = capabilities != nil && !subscribedHIDReports.isEmpty
+        guard available != isHIDRemotePresent else { return }
+        isHIDRemotePresent = available
+        onHIDPresenceChange?(available)
+        publishDeclaredCapabilities()
+        onLog?(
+            "CHROMECAST GATT phase=controls result=\(available ? "ready" : "unavailable") " +
+                "report_channels=\(subscribedHIDReports.count)"
+        )
+    }
+
+    private func publishDeclaredCapabilities() {
+        guard capabilities != nil else {
+            onDeclaredCapabilitiesChange?([])
+            return
+        }
+        var declared: ChromecastDeclaredCapabilities = [.voiceStream]
+        if isHIDRemotePresent { declared.insert(.controlEdges) }
+        onDeclaredCapabilitiesChange?(declared)
+    }
+
+    private func resetControls(reason: String) {
+        for identifier in controlDecoders.keys {
+            guard var decoder = controlDecoders[identifier],
+                  let cancelled = decoder.cancel(reason: reason)
+            else { continue }
+            onControlEvent?(cancelled)
+        }
+        controlDecoders.removeAll()
+        subscribedHIDReports.removeAll()
+        guard isHIDRemotePresent else { return }
+        isHIDRemotePresent = false
+        onHIDPresenceChange?(false)
+    }
+
     private func resetSession(reason: ChromecastVoiceEndReason) {
         guard streaming else { return }
         streaming = false
@@ -365,6 +560,7 @@ final class PublicChromecastBluetoothBridge: NSObject, CBCentralManagerDelegate,
         guard !blockedByFailure else { return }
         blockedByFailure = true
         resetSession(reason: .cancelled(reason))
+        resetControls(reason: reason)
         onDeclaredCapabilitiesChange?([])
         onStatusChange?(.unsupported(reason: reason))
         onLog?("CHROMECAST BLE phase=failed result=failed reason=\(reason)")

@@ -1686,14 +1686,19 @@ struct OnboardingView: View {
     }
 
     private var physicalRemoteButtonStatusDetail: String {
+        let isChromecast = settings.onboardingControlSource == .chromecastRemote
         let instructionKey = isVoiceOnlyChromecast
             ? (remoteEvidenceObserved
                 ? "onboarding.remote.voice_only.received_detail"
                 : "onboarding.remote.voice_only.waiting_detail")
             : remoteInputDiagnostic.shouldShowVoiceButtonCorrection
-            ? "onboarding.remote.voice_button_mistake.detail"
+            ? (isChromecast
+                ? "onboarding.remote.chromecast.voice_button_mistake.detail"
+                : "onboarding.remote.voice_button_mistake.detail")
             : observedRemoteButtons.isEmpty
-                ? "onboarding.remote.button_waiting_detail"
+                ? (isChromecast
+                    ? "onboarding.remote.chromecast.button_waiting_detail"
+                    : "onboarding.remote.button_waiting_detail")
                 : "onboarding.remote.button_detail"
         return localization.text(instructionKey)
     }
@@ -2469,7 +2474,7 @@ struct OnboardingView: View {
             ]
         case .chromecastRemote:
             return [
-                .power, .up, .left, .ok, .right, .down, .back,
+                .power, .up, .down, .back,
                 .home, .volumeUp, .volumeDown, .mute, .youtube, .netflix, .input,
             ]
         case .appleCompanion, .webRemote, .unselected:

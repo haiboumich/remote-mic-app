@@ -1,6 +1,7 @@
 SHELL := /bin/zsh
 
 DMG_VARIANT ?= native
+DMG_TEST_MODE ?= full
 
 .PHONY: dmg
 
@@ -12,11 +13,16 @@ dmg:
 		native|apple-silicon|intel|all) ;; \
 		*) print -u2 "DMG_VARIANT must be native, apple-silicon, intel, or all"; exit 2 ;; \
 	esac; \
+	case "$(DMG_TEST_MODE)" in \
+		full|targeted) ;; \
+		*) print -u2 "DMG_TEST_MODE must be full or targeted"; exit 2 ;; \
+	esac; \
 	if [[ -n "$$(git status --porcelain --untracked-files=all)" ]]; then \
 		print -u2 "make dmg requires a clean checkout; commit and push first"; \
 		exit 1; \
 	fi; \
 	source_commit="$$(git rev-parse HEAD)"; \
+	export SAYALL_OFFLINE_DMG_TEST_MODE="$(DMG_TEST_MODE)"; \
 	./scripts/build-offline-dmg.sh "$(DMG_VARIANT)"; \
 	version="$$(/usr/bin/plutil -extract CFBundleShortVersionString raw -o - Resources/Info.plist)"; \
 	build_number="$$(/usr/bin/plutil -extract CFBundleVersion raw -o - Resources/Info.plist)"; \
