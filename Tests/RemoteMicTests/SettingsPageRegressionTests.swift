@@ -1406,6 +1406,57 @@ struct SettingsPageRegressionTests {
         #expect(RemoteMappingLayout.arrowTip(cardEdge: rightEndPoint, side: .right).x == rightEndPoint.x - 7)
     }
 
+    @Test func publicChromecastMappingUsesItsOwnPhysicalControlsAndConnectorAnchors() throws {
+        let layout = RemoteMappingLayout.presentation(for: .chromecastVoiceRemote)
+        let placements = layout.buttonPlacements
+        let expectedButtons = Set(ChromecastRemoteControl.allCases.map(\.remoteButton))
+
+        #expect(layout.canvasHeight == 650)
+        #expect(placements.count == ChromecastRemoteControl.allCases.count)
+        #expect(Set(placements.map(\.button)) == expectedButtons)
+        #expect(!Set(placements.map(\.button)).contains(.menu))
+        #expect(!Set(placements.map(\.button)).contains(.tv))
+        #expect(layout.voiceAnchor == UnitPoint(x: 0.728, y: 0.348))
+        #expect(layout.voiceTargetY == 0.309)
+
+        let expectedAnchors: [RemoteButton: UnitPoint] = [
+            .power: UnitPoint(x: 0.408, y: 0.744),
+            .up: UnitPoint(x: 0.567, y: 0.028),
+            .left: UnitPoint(x: 0.314, y: 0.143),
+            .back: UnitPoint(x: 0.408, y: 0.348),
+            .home: UnitPoint(x: 0.408, y: 0.481),
+            .youtube: UnitPoint(x: 0.408, y: 0.614),
+            .volumeUp: UnitPoint(x: 0.900, y: 0.480),
+            .volumeDown: UnitPoint(x: 0.900, y: 0.560),
+            .right: UnitPoint(x: 0.819, y: 0.143),
+            .ok: UnitPoint(x: 0.567, y: 0.143),
+            .down: UnitPoint(x: 0.567, y: 0.262),
+            .mute: UnitPoint(x: 0.728, y: 0.481),
+            .netflix: UnitPoint(x: 0.728, y: 0.614),
+            .input: UnitPoint(x: 0.728, y: 0.744),
+        ]
+        for placement in placements {
+            #expect(placement.anchor == expectedAnchors[placement.button])
+            #expect((0...1).contains(placement.targetY))
+        }
+
+        #expect(placements.filter { $0.side == .left }.count == 7)
+        #expect(placements.filter { $0.side == .right }.count == 7)
+        for side in [RemoteMappingSide.left, .right] {
+            let ordered = placements
+                .filter { $0.side == side }
+                .sorted { $0.targetY < $1.targetY }
+            #expect(zip(ordered, ordered.dropFirst()).allSatisfy {
+                $0.anchor.y <= $1.anchor.y && $0.targetY < $1.targetY
+            })
+        }
+
+        let xiaomi = RemoteMappingLayout.presentation(for: .rc003)
+        #expect(xiaomi.canvasHeight == RemoteMappingLayout.canvasHeight)
+        #expect(xiaomi.buttonPlacements.map(\.button) == RemoteMappingLayout.buttonPlacements.map(\.button))
+        #expect(xiaomi.voiceAnchor == RemoteMappingLayout.voiceAnchor)
+    }
+
     @Test func redesignedPagesKeepEveryExistingUserAction() throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -1636,7 +1687,10 @@ struct SettingsPageRegressionTests {
         #expect(!mappingCanvasSource.contains("size: 11"))
         #expect(!mappingCanvasSource.contains("minimumScaleFactor"))
         #expect(source.contains("remoteModel: settings.selectedRemoteProfile?.model"))
-        #expect(source.range(of: "MappingRemotePhoto(model: remoteModel)")!.lowerBound < source.range(of: "connectionLines(metrics: metrics)")!.lowerBound)
+        #expect(
+            source.range(of: "MappingRemotePhoto(model: remoteModel)")!.lowerBound <
+                source.range(of: "connectionLines(metrics: metrics, layout: layout)")!.lowerBound
+        )
 
         let voiceFnToggle = "Toggle(\"connection.voice_fn_tap.enabled\""
         #expect(source.components(separatedBy: voiceFnToggle).count == 2)
