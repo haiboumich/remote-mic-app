@@ -1145,6 +1145,12 @@ struct BuildSigningTests {
         #expect(packageVerifierSource.contains(
             "public Installer choices unexpectedly include Siri Remote"
         ))
+        #expect(packageVerifierSource.contains(
+            "offline Installer App unexpectedly contains Sparkle key"
+        ))
+        #expect(!packageVerifierSource.contains(
+            "plutil -extract SUFeedURL raw"
+        ))
         #expect(postinstallSource.contains("OPTIONAL_APP_EXECUTABLES"))
 
         for distribution in [

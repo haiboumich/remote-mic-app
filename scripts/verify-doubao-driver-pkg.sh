@@ -398,8 +398,14 @@ case "$MODE" in
     "$ROOT/scripts/verify-app.sh" "$PAYLOAD_APP"
     test "$(/usr/bin/plutil -extract LSMinimumSystemVersion raw -o - \
       "$PAYLOAD_APP/Contents/Info.plist")" = "$RELEASE_MIN_SYSTEM_VERSION"
-    test "$(/usr/bin/plutil -extract SUFeedURL raw -o - \
-      "$PAYLOAD_APP/Contents/Info.plist")" = "$RELEASE_FEED_URL"
+    for update_key in SUFeedURL SUEnableAutomaticChecks SUScheduledCheckInterval \
+      SUAutomaticallyUpdate SUAllowsAutomaticUpdates SUPublicEDKey; do
+      if /usr/bin/plutil -type "$update_key" \
+          "$PAYLOAD_APP/Contents/Info.plist" >/dev/null 2>&1; then
+        print -u2 "offline Installer App unexpectedly contains Sparkle key: $update_key"
+        exit 1
+      fi
+    done
     test "$(/usr/bin/plutil -extract CFBundleShortVersionString raw -o - \
       "$PAYLOAD_APP/Contents/Info.plist")" = "$VERSION"
     test "$(/usr/bin/plutil -extract CFBundleVersion raw -o - \
