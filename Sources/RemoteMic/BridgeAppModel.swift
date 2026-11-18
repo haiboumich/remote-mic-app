@@ -1047,6 +1047,8 @@ final class BridgeAppModel: NSObject, ObservableObject, XiaomiBluetoothBridgeDel
     private var chromecastProfileID: UUID?
     /// 已连接的 Chromecast 档案，用于设备选择器与「已连接」状态。
     private var connectedChromecastProfileIDs = Set<UUID>()
+    /// Battery Service 可能早于 ATVV Ready 返回；先缓存，档案建立后再应用。
+    private var chromecastBatteryLevel: Int?
     /// 当前按下的 Chromecast 按键（画布控制 ID）。
     private var chromecastPressedControls = Set<String>()
     private var chromecastButtonGestureRecognizer = RemoteButtonGestureRecognizer()
@@ -1299,6 +1301,9 @@ final class BridgeAppModel: NSObject, ObservableObject, XiaomiBluetoothBridgeDel
         }
         chromecastFeature.onHIDPresenceChange = { [weak self] isPresent in
             AppLogger.shared.write("CHROMECAST HID DEVICE present=\(isPresent)")
+        }
+        chromecastFeature.onBatteryLevelChange = { [weak self] level in
+            self?.handleChromecastBatteryLevelChange(level)
         }
         chromecastFeature.onLog = { message in
             AppLogger.shared.write(message)
@@ -9516,11 +9521,41 @@ final class BridgeAppModel: NSObject, ObservableObject, XiaomiBluetoothBridgeDel
 
     /// 链路不再可用时把档案从「已连接」里摘掉，但保留档案本身（用户的映射不能跟着丢）。
     private func disconnectChromecastProfile(reason: String) {
-        guard !connectedChromecastProfileIDs.isEmpty else { return }
+        let hadConnectedProfile = !connectedChromecastProfileIDs.isEmpty
         connectedChromecastProfileIDs.removeAll()
-        if let profileID = chromecastProfileID { membershipFeature.resetCommonPhrases(source: "chromecast:\(profileID.uuidString)") }
+        if let profileID = chromecastProfileID {
+            remoteBatteryLevels.removeValue(forKey: profileID)
+            if hadConnectedProfile {
+                membershipFeature.resetCommonPhrases(source: "chromecast:\(profileID.uuidString)")
+            }
+        }
+        chromecastBatteryLevel = nil
+        guard hadConnectedProfile else { return }
         resetChromecastButtonState(reason: reason)
         refreshBluetoothPresentation()
+    }
+
+    private func handleChromecastBatteryLevelChange(_ level: Int?) {
+        chromecastBatteryLevel = level.map { min(100, max(0, $0)) }
+        guard let profileID = chromecastProfileID,
+              connectedChromecastProfileIDs.contains(profileID)
+        else {
+            AppLogger.shared.write(
+                "CHROMECAST BATTERY_BRIDGE phase=deferred result=profile_pending " +
+                    "level=\(chromecastBatteryLevel.map(String.init) ?? "unknown")"
+            )
+            return
+        }
+        if let chromecastBatteryLevel {
+            remoteBatteryLevels[profileID] = chromecastBatteryLevel
+        } else {
+            remoteBatteryLevels.removeValue(forKey: profileID)
+        }
+        AppLogger.shared.write(
+            "CHROMECAST BATTERY_BRIDGE phase=completed " +
+                "result=\(chromecastBatteryLevel == nil ? "unavailable" : "available") " +
+                "level=\(chromecastBatteryLevel.map(String.init) ?? "unknown")"
+        )
     }
 
     private func logChromecastSustain() {
@@ -10034,6 +10069,9 @@ final class BridgeAppModel: NSObject, ObservableObject, XiaomiBluetoothBridgeDel
             chromecastProfileID = profileID
         }
         connectedChromecastProfileIDs.insert(profileID)
+        if let chromecastBatteryLevel {
+            remoteBatteryLevels[profileID] = chromecastBatteryLevel
+        }
         // 首次使用（还没有任何选中项）才自动选它，其余尊重用户上一次的选择。
         //
         // 这里以前是「连接即选中」。冷启动时 Chromecast 常比小米先就绪，会把从偏好恢复的

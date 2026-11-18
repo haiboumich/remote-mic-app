@@ -109,12 +109,25 @@ enum ChromecastPublicControlCapabilityPolicy {
     static func declared(
         voiceReady: Bool,
         ioHIDAvailable: Bool,
-        gattAvailable: Bool
+        gattAvailable: Bool,
+        batteryAvailable: Bool = false
     ) -> ChromecastDeclaredCapabilities {
         guard voiceReady else { return [] }
         var declared: ChromecastDeclaredCapabilities = [.voiceStream]
         if ioHIDAvailable || gattAvailable { declared.insert(.controlEdges) }
+        if batteryAvailable { declared.insert(.battery) }
         return declared
+    }
+}
+
+/// Decodes the standard Bluetooth Battery Level characteristic (`2A19`).
+///
+/// The characteristic is one unsigned percentage byte. Values above 100 are
+/// invalid and must never be presented as a user-facing battery percentage.
+enum ChromecastBatteryLevelDecoder {
+    static func decode(_ data: Data) -> Int? {
+        guard data.count == 1, let value = data.first, value <= 100 else { return nil }
+        return Int(value)
     }
 }
 

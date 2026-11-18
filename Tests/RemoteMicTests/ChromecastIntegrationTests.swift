@@ -255,9 +255,9 @@ struct ChromecastIntegrationTests {
         #expect(XiaomiRemoteModel.chromecastVoiceRemote.localizationKey.hasPrefix("remote.device.model."))
     }
 
-    /// 该型号不宣告电池能力，界面不得显示一个永远是「未知」的电量位。
-    @Test func chromecastProfileNeverShowsBattery() {
-        #expect(!RemoteBatteryPresentationPolicy.shouldShowBattery(
+    /// Battery Service 是可选能力：没有读数时隐藏，读到有效百分比才显示。
+    @Test func chromecastProfileShowsOnlyObservedBattery() {
+        #expect(RemoteBatteryPresentationPolicy.shouldShowBattery(
             model: .chromecastVoiceRemote,
             level: 42,
             powerState: .onBattery

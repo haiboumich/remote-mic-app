@@ -140,6 +140,7 @@ final class PublicChromecastBluetoothBridge: NSObject, CBCentralManagerDelegate,
     var onControlEvent: ((ChromecastRemoteControlEvent) -> Void)?
     var onControlPrearm: ((ChromecastRemoteControl) -> Void)?
     var onHIDPresenceChange: ((Bool) -> Void)?
+    var onBatteryLevelChange: ((Int?) -> Void)?
     var onSamples: (([Int16], Int) -> Void)?
     var onLog: ((String) -> Void)?
 
@@ -152,6 +153,8 @@ final class PublicChromecastBluetoothBridge: NSObject, CBCentralManagerDelegate,
     private let modelUUID = CBUUID(string: "2A24")
     private let hidServiceUUID = CBUUID(string: "1812")
     private let hidReportUUID = CBUUID(string: "2A4D")
+    private let batteryServiceUUID = CBUUID(string: "180F")
+    private let batteryLevelUUID = CBUUID(string: "2A19")
 
     private var central: CBCentralManager?
     private var peripheral: CBPeripheral?
@@ -159,6 +162,10 @@ final class PublicChromecastBluetoothBridge: NSObject, CBCentralManagerDelegate,
     private var capabilities: ATVVCapabilities?
     private var manufacturer: String?
     private var model: String?
+    private var batteryLevel: Int?
+    /// Suppresses repeated unavailable telemetry while still logging the first
+    /// failed/invalid read of a connection whose cached level is already nil.
+    private var didPublishBatteryObservation = false
     private var subscribed = Set<CBUUID>()
     private var subscribedHIDReports = Set<ObjectIdentifier>()
     /// A HID service can expose more than one Report characteristic. Keep one
@@ -229,6 +236,7 @@ final class PublicChromecastBluetoothBridge: NSObject, CBCentralManagerDelegate,
         if let peripheral, peripheral.state != .disconnected { central?.cancelPeripheralConnection(peripheral) }
         resetSession(reason: .hostStop)
         resetGATTControls(reason: "host_stop")
+        resetBattery(reason: "host_stop")
         peripheral = nil
         transmit = nil
         central?.delegate = nil
@@ -264,6 +272,7 @@ final class PublicChromecastBluetoothBridge: NSObject, CBCentralManagerDelegate,
         guard central.state == .poweredOn else {
             resetSession(reason: .cancelled("central_unavailable"))
             resetGATTControls(reason: "central_unavailable")
+            resetBattery(reason: "central_unavailable")
             onDeclaredCapabilitiesChange?([])
             onStatusChange?(.unauthorized)
             onLog?("CHROMECAST BLE phase=unavailable result=failed reason=central_not_powered")
@@ -311,9 +320,15 @@ final class PublicChromecastBluetoothBridge: NSObject, CBCentralManagerDelegate,
         model = nil
         subscribed.removeAll()
         resetGATTControls(reason: "reconnecting")
+        resetBattery(reason: "reconnecting")
         peripheral.delegate = self
         onStatusChange?(.searching)
-        peripheral.discoverServices([serviceUUID, deviceInformationUUID, hidServiceUUID])
+        peripheral.discoverServices([
+            serviceUUID,
+            deviceInformationUUID,
+            hidServiceUUID,
+            batteryServiceUUID,
+        ])
     }
 
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
@@ -321,6 +336,7 @@ final class PublicChromecastBluetoothBridge: NSObject, CBCentralManagerDelegate,
         self.peripheral = nil
         resetSession(reason: .cancelled("connect_failed"))
         resetGATTControls(reason: "connect_failed")
+        resetBattery(reason: "connect_failed")
         onDeclaredCapabilitiesChange?([])
         onStatusChange?(.disconnected)
         onLog?("CHROMECAST BLE phase=connecting result=failed reason=connect_failed retry_delay_ms=2000")
@@ -336,6 +352,7 @@ final class PublicChromecastBluetoothBridge: NSObject, CBCentralManagerDelegate,
         guard self.peripheral === peripheral else { return }
         resetSession(reason: .cancelled("disconnect"))
         resetGATTControls(reason: "disconnect")
+        resetBattery(reason: "disconnect")
         self.peripheral = nil
         transmit = nil
         onDeclaredCapabilitiesChange?([])
@@ -358,6 +375,14 @@ final class PublicChromecastBluetoothBridge: NSObject, CBCentralManagerDelegate,
         } else {
             onLog?("CHROMECAST GATT phase=service_discovery result=unavailable reason=hid_service_missing")
         }
+        if let battery = peripheral.services?.first(where: { $0.uuid == batteryServiceUUID }) {
+            peripheral.discoverCharacteristics([batteryLevelUUID], for: battery)
+        } else {
+            onLog?(
+                "CHROMECAST BATTERY phase=service_discovery result=unavailable " +
+                    "reason=service_missing"
+            )
+        }
     }
 
     func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
@@ -375,6 +400,38 @@ final class PublicChromecastBluetoothBridge: NSObject, CBCentralManagerDelegate,
                 return
             }
             reports.forEach { peripheral.setNotifyValue(true, for: $0) }
+            return
+        }
+        if service.uuid == batteryServiceUUID {
+            guard error == nil else {
+                onLog?(
+                    "CHROMECAST BATTERY phase=characteristic_discovery " +
+                        "result=unavailable reason=discovery_failed"
+                )
+                return
+            }
+            guard let characteristic = service.characteristics?.first(where: {
+                $0.uuid == batteryLevelUUID && $0.properties.contains(.read)
+            }) else {
+                onLog?(
+                    "CHROMECAST BATTERY phase=characteristic_discovery " +
+                        "result=unavailable reason=level_missing"
+                )
+                return
+            }
+            peripheral.readValue(for: characteristic)
+            if characteristic.properties.contains(.notify)
+                || characteristic.properties.contains(.indicate) {
+                peripheral.setNotifyValue(true, for: characteristic)
+            }
+            let updateMode = characteristic.properties.contains(.notify)
+                || characteristic.properties.contains(.indicate)
+                ? "read_and_notify"
+                : "read_only"
+            onLog?(
+                "CHROMECAST BATTERY phase=characteristic_discovery " +
+                    "result=ready mode=\(updateMode)"
+            )
             return
         }
         guard error == nil else { fail("characteristic_discovery"); return }
@@ -424,6 +481,18 @@ final class PublicChromecastBluetoothBridge: NSObject, CBCentralManagerDelegate,
             }
             return
         }
+        if characteristic.uuid == batteryLevelUUID {
+            if error == nil, characteristic.isNotifying {
+                onLog?("CHROMECAST BATTERY phase=subscription result=ready")
+            } else if error != nil {
+                // Initial reads remain usable even when notifications are not.
+                onLog?(
+                    "CHROMECAST BATTERY phase=subscription result=unavailable " +
+                        "reason=notification_failed"
+                )
+            }
+            return
+        }
         guard error == nil, characteristic.isNotifying else { fail("notification_subscription"); return }
         guard characteristic.uuid == audioUUID || characteristic.uuid == controlUUID else { return }
         subscribed.insert(characteristic.uuid)
@@ -432,6 +501,18 @@ final class PublicChromecastBluetoothBridge: NSObject, CBCentralManagerDelegate,
 
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
         guard self.peripheral === peripheral, shouldRun, !blockedByFailure else { return }
+        if characteristic.uuid == batteryLevelUUID {
+            guard error == nil, let value = characteristic.value else {
+                publishBatteryLevel(nil, reason: "read_failed")
+                return
+            }
+            guard let level = ChromecastBatteryLevelDecoder.decode(value) else {
+                publishBatteryLevel(nil, reason: "invalid_value")
+                return
+            }
+            publishBatteryLevel(level, reason: "observed")
+            return
+        }
         if error != nil, characteristic.uuid == manufacturerUUID || characteristic.uuid == modelUUID {
             fail("device_information_read")
             return
@@ -608,8 +689,38 @@ final class PublicChromecastBluetoothBridge: NSObject, CBCentralManagerDelegate,
         onDeclaredCapabilitiesChange?(ChromecastPublicControlCapabilityPolicy.declared(
             voiceReady: capabilities != nil,
             ioHIDAvailable: ioHIDControlsAvailable,
-            gattAvailable: gattControlsAvailable
+            gattAvailable: gattControlsAvailable,
+            batteryAvailable: batteryLevel != nil
         ))
+    }
+
+    private func publishBatteryLevel(_ level: Int?, reason: String) {
+        let levelChanged = batteryLevel != level
+        guard levelChanged || !didPublishBatteryObservation else { return }
+        didPublishBatteryObservation = true
+        batteryLevel = level
+        if levelChanged {
+            onBatteryLevelChange?(level)
+            publishDeclaredCapabilities()
+        }
+        onLog?(
+            "CHROMECAST BATTERY phase=telemetry " +
+                "result=\(level == nil ? "unavailable" : "available") " +
+                "reason=\(reason) level=\(level.map(String.init) ?? "unknown")"
+        )
+    }
+
+    private func resetBattery(reason: String) {
+        let hadLevel = batteryLevel != nil
+        batteryLevel = nil
+        didPublishBatteryObservation = false
+        if hadLevel {
+            onBatteryLevelChange?(nil)
+            onLog?(
+                "CHROMECAST BATTERY phase=telemetry result=unavailable " +
+                    "reason=\(reason) level=unknown"
+            )
+        }
     }
 
     private func resetGATTControls(reason: String) {
@@ -639,6 +750,7 @@ final class PublicChromecastBluetoothBridge: NSObject, CBCentralManagerDelegate,
         blockedByFailure = true
         resetSession(reason: .cancelled(reason))
         resetGATTControls(reason: reason)
+        resetBattery(reason: reason)
         onDeclaredCapabilitiesChange?([])
         onStatusChange?(.unsupported(reason: reason))
         onLog?("CHROMECAST BLE phase=failed result=failed reason=\(reason)")

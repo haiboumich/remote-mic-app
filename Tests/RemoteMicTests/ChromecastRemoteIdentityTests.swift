@@ -136,8 +136,43 @@ struct ChromecastRemoteIdentityTests {
         #expect(ChromecastPublicControlCapabilityPolicy.declared(
             voiceReady: true,
             ioHIDAvailable: false,
-            gattAvailable: true
-        ) == [.voiceStream, .controlEdges])
+            gattAvailable: true,
+            batteryAvailable: true
+        ) == [.voiceStream, .controlEdges, .battery])
+        #expect(ChromecastPublicControlCapabilityPolicy.declared(
+            voiceReady: false,
+            ioHIDAvailable: true,
+            gattAvailable: true,
+            batteryAvailable: true
+        ).isEmpty)
+    }
+
+    @Test func decodesOnlyValidStandardBatteryPercentages() {
+        #expect(ChromecastBatteryLevelDecoder.decode(Data([0])) == 0)
+        #expect(ChromecastBatteryLevelDecoder.decode(Data([73])) == 73)
+        #expect(ChromecastBatteryLevelDecoder.decode(Data([100])) == 100)
+        #expect(ChromecastBatteryLevelDecoder.decode(Data([101])) == nil)
+        #expect(ChromecastBatteryLevelDecoder.decode(Data()) == nil)
+        #expect(ChromecastBatteryLevelDecoder.decode(Data([50, 0])) == nil)
+    }
+
+    @Test func publicBridgeWiresOptionalBatteryServiceWithoutMakingItRequired() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: root.appendingPathComponent(
+                "Sources/RemoteMic/PublicChromecastBluetoothBridge.swift"
+            ),
+            encoding: .utf8
+        )
+        #expect(source.contains("CBUUID(string: \"180F\")"))
+        #expect(source.contains("CBUUID(string: \"2A19\")"))
+        #expect(source.contains("peripheral.readValue(for: characteristic)"))
+        #expect(source.contains("onBatteryLevelChange?(level)"))
+        #expect(source.contains("reason=service_missing"))
+        #expect(!source.contains("fail(\"battery"))
     }
 
     @Test func prearmsOnlyTheNativeEventsObservedForMuteAndVolume() {

@@ -613,6 +613,7 @@
   - G20BTS Plus / G20S Pro 系列已有 ATVV 实测，但已公开样机主要是 ATVV v0.4、8kHz；当前 App 只接受 16kHz，因此需要补充 8kHz 解码与输出、旧版帧格式和按键会话逻辑，适配成本高于 UR02。同名商品同时存在蓝牙、2.4GHz USB 和不同固件，不能仅凭商品标题承诺兼容。
   - Google Chromecast with Google TV Voice Remote 已有 ATVV v1.0 / 16kHz 实测，理论适配成本也较低，但供货状态不稳定，因此只作为备选兼容设备。
   - 2026-11-15 `offline-only` 公开自编包已接入该遥控器的候选语音桥（CoreBluetooth、DIS 身份门禁、16 kHz ADPCM、HTT 按住会话）。2026-11-18 用户日志证明已配对正品会隐藏 CoreBluetooth HID service `1812`（`hid_service_missing`），普通按键因此改为精确匹配 `0x18D1:0x9450` 的 IOHID 主路径，GATT 仅作系统暴露服务时回退：静音默认 Return，其余安全键可配置，左/右/确定固定由 macOS 管理。用户已确认 build 321 的整体语音与按键可用；build 322 只修复“旧 Chromecast 选择离线、小米晚到后卡片与画布不一致”和缺失系统名称占位，不改两条硬件链路。断连、睡眠与完整 usage 矩阵仍待系统化真机验收，父项保持未完成。当前证据与验收顺序见 `Testing/ChromecastHardwareInterface.md`。
+  - 2026-11-18 build 323 候选把无 alpha 的 Chromecast 白底图片替换为保持原 `360 × 800` 画布的透明资源，并可选发现标准 Battery Service `180F/2A19`；只有有效百分比才显示，缺失或读取失败不影响连接。透明资源已静态检查，三处生产深色界面和目标 Mac 是否真实暴露电量仍待用户验收。
   - 2026-11-18 干净 Mac 上的公开自编包已完成 Chromecast → SayAll 虚拟麦克风 → 微信输入法真实文字闭环：Fn 按住约 4.2 秒，58,240 个样本全部播放、零中断、零入队失败，文本框写入“无线麦 C2 已经连接成功”。此前失败根因是把微信输入法的原生 Fn 按住错误转换成两次 120 ms 点按；配对计划现固定为公开 Chromecast + 微信输入法使用 `hold + Fn` 且关闭 Fn 点按。主映射页同时改用真实 Chromecast 图片。候选 IOHID 普通按键尚未完成真机副作用、断连/睡眠恢复、严格断网与正式分发包验收，父项保持进行中。
   - 本次测试的“小米蓝牙语音遥控器第三方兼容版”不能与另一个已单独验证可连接 Mac 的 RC001-MS 混为同一型号；完整证据、候选状态和真机验收清单保存在独立的产品资料工作区。
 - [ ] 同一个遥控器在多台已配对 Mac 之间切换蓝牙连接（不使用网络转发） <!-- workshop:status=阻塞;priority=P2 -->

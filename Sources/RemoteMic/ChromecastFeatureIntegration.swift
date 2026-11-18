@@ -300,6 +300,8 @@ final class ChromecastFeatureIntegration {
     var onControlPrearm: ((ChromecastRemoteControl) -> Void)?
     /// HID 侧是否看到了本遥控器（用于诊断，不参与业务判断）。
     var onHIDPresenceChange: ((Bool) -> Void)?
+    /// 标准 Battery Level (`180F/2A19`) 的可选百分比；不可用或断开时为 nil。
+    var onBatteryLevelChange: ((Int?) -> Void)?
     /// 解码后的 16 kHz 单声道 PCM。
     var onSamples: (([Int16], Int) -> Void)?
     /// 诊断日志。
@@ -358,6 +360,9 @@ final class ChromecastFeatureIntegration {
         }
         feature.onHIDPresenceChange = { [weak self] isPresent in
             self?.onHIDPresenceChange?(isPresent)
+        }
+        feature.onBatteryLevelChange = { [weak self] level in
+            self?.onBatteryLevelChange?(level)
         }
         feature.onSamples = { [weak self] samples, generation in
             self?.onSamples?(samples, generation)

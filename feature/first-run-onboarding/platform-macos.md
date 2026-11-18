@@ -91,7 +91,7 @@
 - 用户可见文案必须遵守 [`PRODUCT_SPEC.md`](PRODUCT_SPEC.md) 的“用户可见文案必须使用产品语言”不变量；平台实现不得把研发、测试或内部验收状态引入页面。
 - macOS 页面或流程变化必须按 [`design-qa.md`](../../design-qa.md) 和 [`Testing/FirstRunOnboarding.md`](../../Testing/FirstRunOnboarding.md) 完成检查。
 - Onboarding 控制来源页在当前构建包含 Chromecast 适配器时显示对应实体卡片；公开适配器提供已验证的按住说话语义和候选安全普通按键 IOHID 边沿（GATT 回退），后者仍需真机门禁。右栏内容在正常窗口高度内垂直居中；控制来源页允许滚动但不显示滚动指示器。微信小程序连接页在尚未生成二维码时显示“下一步生成二维码”。
-- 主设置“按键映射”页必须按当前型号显示真实设备图：Chromecast 使用 `Chromecast-remote-photo.png`，不得回退到 RC003 图片；未识别型号仍显示缺图占位，不得冒充已知设备。
+- 主设置“按键映射”页必须按当前型号显示真实设备图：Chromecast 使用带透明通道的 `Chromecast-remote-photo.png`，不得回退到 RC003 图片；控制来源缩略图与 Onboarding 主图复用同一透明资源，浅色/深色都不得出现矩形底色。资源保持 `360 × 800` 原画布和主体位置，不能裁切或重心平移，以免破坏主映射页的连线锚点。未识别型号仍显示缺图占位，不得冒充已知设备。
 
 ## 实现与测试入口
 

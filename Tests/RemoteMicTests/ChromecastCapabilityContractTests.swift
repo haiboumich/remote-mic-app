@@ -80,14 +80,18 @@ struct ChromecastCapabilityContractTests {
 
     @Test func hostBatteryPolicyMatchesTheDeclaration() {
         let model = XiaomiRemoteModel.chromecastVoiceRemote
-        // 型号不宣告电池时，界面不得显示永远是「未知」的电量位。
-        #expect(
-            RemoteBatteryPresentationPolicy.shouldShowBattery(
-                model: model,
-                level: 87,
-                powerState: .onBattery
-            ) == declared.contains(.battery)
-        )
+        // 私有型号表不宣告电池，因此没有读数时不显示未知占位；如果公开桥真实
+        // 收到标准 Battery Service 百分比，实际遥测优先于静态型号表并可以显示。
+        #expect(!RemoteBatteryPresentationPolicy.shouldShowBattery(
+            model: model,
+            level: nil,
+            powerState: .onBattery
+        ))
+        #expect(RemoteBatteryPresentationPolicy.shouldShowBattery(
+            model: model,
+            level: 87,
+            powerState: .onBattery
+        ))
     }
 }
 #endif

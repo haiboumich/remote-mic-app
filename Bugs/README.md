@@ -1,5 +1,7 @@
 # Bug 记录
 
+- [Chromecast 遥控器深色模式白底与电量未接入](./2026-11-18-chromecast-dark-photo-and-optional-battery.md)
+
 - [设置相关页面装饰性图标颜色不一致](./2026-11-14-settings-decorative-icon-colors.md)
 
 - [音频引擎重绑后误报可用并在活跃语音中持续丢包](./2026-11-14-audio-engine-recovery-backoff.md)
@@ -203,6 +205,7 @@
 
 | 时间 | Bug | 状态 |
 | --- | --- | --- |
+| 2026-11-18 | [Chromecast 遥控器深色模式白底与电量未接入](./2026-11-18-chromecast-dark-photo-and-optional-battery.md) | build 323 候选修复完成；透明资源已静态复核，标准 `180F/2A19` 电量读取与三处生产 UI 待用户真机验收 |
 | 2026-11-14 | [回眸页首次切换耗时过长](./2026-11-14-reflections-page-switch-latency.md) | 候选修复：日期头和记录行改为同一 LazyVStack 懒加载，去重刷新并缓存图标/格式化器；Build 381 本机实测首次显示从约 1.3–1.7 秒降到约 0.5–1.0 秒；更大归档与 Intel 复测待完成 |
 | 2026-11-13 | [断连后设备不再被接管，语音键的 F5→Fn 映射没有写回](./2026-11-13-voice-key-reconnect-mapping-not-reapplied.md) | 候选修复：映射校验失败回报上层，按 0.5/1/2/4/8 秒有界重试且不要求蓝牙桥 ready；1401 项自动化通过，反向验证两处断言变红后恢复；真实 Intel 复测待完成 |
 | 2026-11-13 | [蓝牙语音停止前等待虚拟麦克风尾音排空](./2026-11-13-bluetooth-tail-release.md) | 候选修复：正常停止先等待已入队音频自然排空，再释放语音键；不 flush；新会话清理旧按键保持；1399 项自动化通过，真实 RC003 尾字复测待完成 |
