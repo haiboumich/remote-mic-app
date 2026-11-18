@@ -3462,6 +3462,9 @@ struct SettingsView: View {
         let powerState = model.powerState(for: profile.id)
         let modelName = remoteModelName(profile)
         let systemName = remoteSystemName(profile)
+        let accessibilityName = [modelName, systemName]
+            .compactMap { $0 }
+            .joined(separator: ", ")
         let showsBattery = RemoteBatteryPresentationPolicy.shouldShowBattery(
             model: profile.model,
             level: batteryLevel,
@@ -3479,11 +3482,19 @@ struct SettingsView: View {
                             .help(modelName)
                             .font(.system(size: 13, weight: .semibold))
                             .lineLimit(1)
-                        Text(systemName)
-                            .help(systemName)
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                        if let systemName {
+                            Text(systemName)
+                                .help(systemName)
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        } else {
+                            // 名称不可读时不向用户显示“未知”错误感文案，但保留三行卡片高度，
+                            // 避免设备名称稍后出现时把页头和画布整体推移。
+                            Color.clear
+                                .frame(height: 14)
+                                .accessibilityHidden(true)
+                        }
                     }
                 }
                 .buttonStyle(.plain)
@@ -3491,7 +3502,7 @@ struct SettingsView: View {
                 // 画出一个只框住标题的焦点环，看起来像选中态渲染坏了。
                 // 卡片本身是点击选择的，这里不画焦点环；卡片里的其它按钮不受影响。
                 .modifier(CompatibilityFocusEffectDisabledModifier())
-                .accessibilityLabel(Text("\(modelName), \(systemName)"))
+                .accessibilityLabel(Text(accessibilityName))
                 .accessibilityAddTraits(selected ? .isSelected : [])
                 HStack(spacing: 7) {
                     remoteConnectionLabel(connected: connected)
@@ -3676,9 +3687,8 @@ struct SettingsView: View {
         localization.text(profile.displayNameFallbackKey)
     }
 
-    private func remoteSystemName(_ profile: RemoteDeviceProfile) -> String {
+    private func remoteSystemName(_ profile: RemoteDeviceProfile) -> String? {
         model.systemDeviceName(for: profile)
-            ?? localization.text("remote.device.system_name_unknown")
     }
 
     @ViewBuilder

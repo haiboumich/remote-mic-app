@@ -214,6 +214,33 @@ struct SettingsPageRegressionTests {
         #expect(settingsSource.contains("model.setMappingPageVisible(selectedSection == .mapping)"))
     }
 
+    @Test func lateFirstConnectionReplacesAnOfflinePersistedCanvasWithoutBreakingTransientDisconnects() {
+        #expect(RemoteMappingAutomaticSelectionPolicy.decision(
+            selectedProfileExists: true,
+            selectedProfileConnected: false,
+            waitingForPreviousRemote: true,
+            lateConnectedFallbackPending: false
+        ) == .waitForPreviousRemote)
+        #expect(RemoteMappingAutomaticSelectionPolicy.decision(
+            selectedProfileExists: true,
+            selectedProfileConnected: false,
+            waitingForPreviousRemote: false,
+            lateConnectedFallbackPending: true
+        ) == .fallbackToConnectedRemote)
+        #expect(RemoteMappingAutomaticSelectionPolicy.decision(
+            selectedProfileExists: true,
+            selectedProfileConnected: false,
+            waitingForPreviousRemote: false,
+            lateConnectedFallbackPending: false
+        ) == .preserveOfflineSelection)
+        #expect(RemoteMappingAutomaticSelectionPolicy.decision(
+            selectedProfileExists: true,
+            selectedProfileConnected: true,
+            waitingForPreviousRemote: false,
+            lateConnectedFallbackPending: true
+        ) == .preserveSelectedConnected)
+    }
+
     @Test func remoteSelectorKeepsTheSelectedCardInView() throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -1859,7 +1886,10 @@ struct SettingsPageRegressionTests {
         #expect(cardSource.contains("let systemName = remoteSystemName(profile)"))
         #expect(cardSource.contains("Text(modelName)"))
         #expect(cardSource.contains("Text(systemName)"))
-        #expect(cardSource.contains(".accessibilityLabel(Text(\"\\(modelName), \\(systemName)\"))"))
+        #expect(cardSource.contains("let accessibilityName = [modelName, systemName]"))
+        #expect(cardSource.contains(".accessibilityLabel(Text(accessibilityName))"))
+        #expect(cardSource.contains("if let systemName"))
+        #expect(cardSource.contains("Color.clear"))
         #expect(cardSource.contains("remoteBatteryLabel("))
         #expect(cardSource.contains("let powerState = model.powerState(for: profile.id)"))
         #expect(cardSource.contains("if showsBattery"))
@@ -1957,7 +1987,9 @@ struct SettingsPageRegressionTests {
         #expect(!selectorSource.contains("ScrollView(.horizontal, showsIndicators: true)"))
         #expect(!selectorSource.contains("ForEach(settings.remoteDeviceProfiles)"))
         #expect(source.contains("Button(\"connection.action.reconnect\")"))
-        #expect(source.contains("remote.device.system_name_unknown"))
+        #expect(source.contains("if let systemName"))
+        #expect(source.contains("Color.clear"))
+        #expect(!source.contains("?? localization.text(\"remote.device.system_name_unknown\")"))
     }
 
     /// 按键页空状态与已连接设备卡共用页头 HStack 的底边。

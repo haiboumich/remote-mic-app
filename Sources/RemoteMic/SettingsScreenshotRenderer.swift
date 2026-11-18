@@ -174,6 +174,7 @@ enum SettingsScreenshotRenderer {
         ] {
             settings.appIconIdentifier = AppIconIdentifier(rawValue: iconIdentifier)
         }
+        var remoteCardProfileIDs: Set<UUID> = []
         var remoteCardSystemNames: [UUID: String] = [:]
         var remoteCardBatteryLevels: [UUID: Int] = [:]
         var remoteCardPowerStates: [UUID: RemotePowerState] = [:]
@@ -187,10 +188,10 @@ enum SettingsScreenshotRenderer {
             settings.updateRemoteProfileModel(appleID, model: .appleSiriRemoteA2854)
             let chromecastID = settings.registerChromecastRemote()
             settings.selectRemoteProfile(appleID)
+            remoteCardProfileIDs = [xiaomiID, appleID, chromecastID]
             remoteCardSystemNames = [
                 xiaomiID: "书房遥控器",
                 appleID: "客厅 Apple TV",
-                chromecastID: "Bedroom Remote",
             ]
             remoteCardBatteryLevels = [
                 xiaomiID: 78,
@@ -281,7 +282,7 @@ enum SettingsScreenshotRenderer {
         }
         if showsRemoteCards {
             model.configureRemoteCardsForSettingsScreenshot(
-                profileIDs: Set(remoteCardSystemNames.keys),
+                profileIDs: remoteCardProfileIDs,
                 systemNames: remoteCardSystemNames,
                 batteryLevels: remoteCardBatteryLevels,
                 powerStates: remoteCardPowerStates

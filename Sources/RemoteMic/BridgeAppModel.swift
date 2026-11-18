@@ -35,6 +35,29 @@ enum MobileVoiceStartDisposition: Equatable {
     case busy
 }
 
+enum RemoteMappingAutomaticSelectionDecision: Equatable {
+    case preserveSelectedConnected
+    case waitForPreviousRemote
+    case fallbackToConnectedRemote
+    case preserveOfflineSelection
+}
+
+enum RemoteMappingAutomaticSelectionPolicy {
+    static func decision(
+        selectedProfileExists: Bool,
+        selectedProfileConnected: Bool,
+        waitingForPreviousRemote: Bool,
+        lateConnectedFallbackPending: Bool
+    ) -> RemoteMappingAutomaticSelectionDecision {
+        if selectedProfileConnected { return .preserveSelectedConnected }
+        if waitingForPreviousRemote { return .waitForPreviousRemote }
+        if !selectedProfileExists || lateConnectedFallbackPending {
+            return .fallbackToConnectedRemote
+        }
+        return .preserveOfflineSelection
+    }
+}
+
 enum MobileVoiceRestartPolicy {
     static func startDisposition(
         requested: MobileVoiceSource,
@@ -4950,6 +4973,7 @@ final class BridgeAppModel: NSObject, ObservableObject, XiaomiBluetoothBridgeDel
     /// 小米链路一次重连就会把它抢回去，看起来像页面自己在乱跳。
     func noteManualRemoteProfileSelection() {
         remoteSelectionWasManual = true
+        lateConnectedRemoteFallbackPending = false
         // 用户已经自己决定了看哪台，重连窗口没有继续等下去的理由。
         finishWaitingForPreviousRemote()
     }
@@ -4968,6 +4992,9 @@ final class BridgeAppModel: NSObject, ObservableObject, XiaomiBluetoothBridgeDel
 
     /// 是否还在等上次选中的遥控器连上。窗口内连接事件不得改动选中态。
     private var isWaitingForPreviousRemote = false
+    /// 重连窗口到期时还没有任何设备在线：下一台真实上线的设备必须接管旧的离线画布。
+    /// 一旦用户手动选择，或历史设备本轮确实连上，就立即清除，避免普通断连时乱跳。
+    private var lateConnectedRemoteFallbackPending = false
     private var previousRemoteGraceWorkItem: DispatchWorkItem?
 
     func selectDefaultMappingRemoteIfAvailable() {
@@ -4995,37 +5022,43 @@ final class BridgeAppModel: NSObject, ObservableObject, XiaomiBluetoothBridgeDel
             )
             return
         }
-        if let selectedID = settings.selectedRemoteProfileID, isRemoteConnected(selectedID) {
+        let decision = RemoteMappingAutomaticSelectionPolicy.decision(
+            selectedProfileExists: settings.selectedRemoteProfile != nil,
+            selectedProfileConnected: settings.selectedRemoteProfileID.map(isRemoteConnected) ?? false,
+            waitingForPreviousRemote: isWaitingForPreviousRemote,
+            lateConnectedFallbackPending: lateConnectedRemoteFallbackPending
+        )
+        switch decision {
+        case .preserveSelectedConnected:
+            lateConnectedRemoteFallbackPending = false
             finishWaitingForPreviousRemote()
             AppLogger.shared.write(
                 "REMOTE MAPPING_DEFAULT phase=completed result=preserved " +
                     "reason=previous_remote_connected trigger=connection"
             )
-            return
-        }
-        if isWaitingForPreviousRemote {
+        case .waitForPreviousRemote:
             AppLogger.shared.write(
                 "REMOTE MAPPING_DEFAULT phase=in_progress result=waiting " +
                     "reason=previous_remote_pending trigger=connection"
             )
-            return
-        }
-        guard settings.selectedRemoteProfile == nil else {
+        case .preserveOfflineSelection:
             // 有历史选择、只是此刻不在线：运行中的断连不自动跳。小米休眠或信号抖动
             // 会把画布切到别的设备，而链路就绪不会自动切回来，用户就卡在别的画布上了。
-            // 重新进入按键页会再走一次重连窗口，那时才判定要不要回退。
+            // 重新进入按键页会再走一次重连窗口；若窗口结束后才有设备首次上线，
+            // `lateConnectedRemoteFallbackPending` 会让那台真实在线设备接管旧画布。
             AppLogger.shared.write(
                 "REMOTE MAPPING_DEFAULT phase=completed result=preserved " +
                     "reason=previous_remote_offline trigger=connection"
             )
-            return
+        case .fallbackToConnectedRemote:
+            applyConnectedRemoteFallback(trigger: "connection")
         }
-        applyConnectedRemoteFallback(trigger: "connection")
     }
 
     /// 以「上次选中的那台」为起点安排一次重连窗口。
     private func beginWaitingForPreviousRemote(trigger: String) {
         finishWaitingForPreviousRemote()
+        lateConnectedRemoteFallbackPending = false
         guard !remoteSelectionWasManual else { return }
 
         guard let selected = settings.selectedRemoteProfile else {
@@ -5034,6 +5067,7 @@ final class BridgeAppModel: NSObject, ObservableObject, XiaomiBluetoothBridgeDel
             return
         }
         if isRemoteConnected(selected.id) {
+            lateConnectedRemoteFallbackPending = false
             AppLogger.shared.write(
                 "REMOTE MAPPING_DEFAULT phase=completed result=preserved " +
                     "reason=previous_remote_connected trigger=\(trigger)"
@@ -5063,8 +5097,12 @@ final class BridgeAppModel: NSObject, ObservableObject, XiaomiBluetoothBridgeDel
         isWaitingForPreviousRemote = false
         guard !remoteSelectionWasManual else { return }
         if let selectedID = settings.selectedRemoteProfileID, isRemoteConnected(selectedID) {
+            lateConnectedRemoteFallbackPending = false
             return
         }
+        // 此刻没有可回退设备时也保留这个意图：真实硬件可能在窗口结束后才完成 Ready。
+        // 后续连接事件必须再执行一次 fallback，不能永久停在旧的离线画布。
+        lateConnectedRemoteFallbackPending = true
         applyConnectedRemoteFallback(trigger: "grace_expired")
     }
 
@@ -5096,6 +5134,7 @@ final class BridgeAppModel: NSObject, ObservableObject, XiaomiBluetoothBridgeDel
             return
         }
         guard profile.id != settings.selectedRemoteProfileID else {
+            lateConnectedRemoteFallbackPending = false
             AppLogger.shared.write(
                 "REMOTE MAPPING_DEFAULT phase=completed result=preserved " +
                     "reason=connected_remote_already_selected trigger=\(trigger)"
@@ -5106,6 +5145,7 @@ final class BridgeAppModel: NSObject, ObservableObject, XiaomiBluetoothBridgeDel
             "REMOTE MAPPING_DEFAULT phase=completed result=selected " +
                 "reason=previous_remote_absent family=\(profile.model.rawValue) trigger=\(trigger)"
         )
+        lateConnectedRemoteFallbackPending = false
         if ProcessInfo.processInfo.environment["REMOTE_MIC_SETTINGS_SCREENSHOT_DIR"] != nil {
             settings.selectRemoteProfile(profile.id)
             return
