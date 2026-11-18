@@ -371,7 +371,7 @@ struct ChromecastIntegrationTests {
             "chromecastFeature.setControlMappingEnabled(settings.customMappingEnabled)"
         ))
         #expect(modelSource.contains("hidEventSuppressor.arm("))
-        #expect(modelSource.contains("chromecastNativeEvents(for: event.control)"))
+        #expect(modelSource.contains("ChromecastNativeEventPolicy.nativeEvents(for: event.control)"))
         // 私有包档案不得被小米 HID 发现链路当成候选。
         #expect(modelSource.contains("!profile.model.usesPrivateAdapter"))
         // 按键事件必须接到执行链路上，而不是只更新界面状态。

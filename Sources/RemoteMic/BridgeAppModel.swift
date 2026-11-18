@@ -1268,6 +1268,12 @@ final class BridgeAppModel: NSObject, ObservableObject, XiaomiBluetoothBridgeDel
         chromecastFeature.onControlEvent = { [weak self] event in
             self?.handleChromecastControlEvent(event)
         }
+        chromecastFeature.onControlPrearm = { [weak self] control in
+            guard let self else { return }
+            let nativeEvents = ChromecastNativeEventPolicy.nativeEvents(for: control)
+            guard !nativeEvents.isEmpty else { return }
+            self.hidEventSuppressor.prearm(nativeEvents: nativeEvents)
+        }
         chromecastFeature.onHIDPresenceChange = { [weak self] isPresent in
             AppLogger.shared.write("CHROMECAST HID DEVICE present=\(isPresent)")
         }
@@ -9404,7 +9410,7 @@ final class BridgeAppModel: NSObject, ObservableObject, XiaomiBluetoothBridgeDel
         return names.isEmpty ? "none" : names.joined(separator: "+")
     }
 
-    // MARK: - Chromecast 硬件（公开 GATT 或可选私有包）
+    // MARK: - Chromecast 硬件（公开 ATVV + IOHID 或可选私有包）
     //
     // 与 Siri Remote 链路完全隔离：独立 owner（`.chromecast`）、独立会话与排空操作号，
     // 一方结束不会取消另一方。公开构建使用本仓库内的 CoreBluetooth 适配器。
@@ -9427,8 +9433,8 @@ final class BridgeAppModel: NSObject, ObservableObject, XiaomiBluetoothBridgeDel
     private func syncChromecastRuntimeState() {
         guard started else { return }
         chromecastFeature.setVoiceMode(effectiveChromecastVoiceMode)
-        // 映射总开关决定 HID 通道是否独占设备：它必须即时生效，否则界面上「已开启映射」
-        // 而系统仍在消费这些按键，用户会以为映射没生效。
+        // 映射总开关决定普通按键是否执行配置动作及提前登记可拦截的系统事件；IOHID
+        // 输入源仍保持观察，以便 Onboarding 取证及开关重新启用时无需重连。
         chromecastFeature.setControlMappingEnabled(settings.customMappingEnabled)
         if settings.chromecastEnabled {
             chromecastFeature.start()
@@ -9852,7 +9858,7 @@ final class BridgeAppModel: NSObject, ObservableObject, XiaomiBluetoothBridgeDel
 
     // MARK: - Chromecast 普通按键（键位映射）
     //
-    // 与语音链路是两条独立的通道：语音走 ATVV，公开按键走 HID-over-GATT。两者各自维护自己的活动状态，
+    // 与语音链路是两条独立的通道：语音走 ATVV，公开按键优先走 IOHID（GATT 仅作可用时的回退）。两者各自维护自己的活动状态，
     // 一方结束不会清除另一方的状态。
 
     private func handleChromecastControlEvent(_ event: ChromecastRemoteControlEvent) {
@@ -9929,15 +9935,15 @@ final class BridgeAppModel: NSObject, ObservableObject, XiaomiBluetoothBridgeDel
             }
             return
         }
-        // 私有原生映射可在设备激活前屏蔽普通 HID 用法。公开 GATT 路径没有
+        // 私有原生映射可在设备激活前屏蔽普通 HID 用法。公开 IOHID/GATT 路径没有
         // 这层系统服务；对静音/音量这类会产生 NX_SYSDEFINED 的安全按键，使用
         // 已验证的 CGEvent 抑制器吞掉原生副作用，再执行用户映射。
         if !chromecastNativeKeyMapper.isPrepared {
-            let nativeEvents = chromecastNativeEvents(for: event.control)
+            let nativeEvents = ChromecastNativeEventPolicy.nativeEvents(for: event.control)
             if !nativeEvents.isEmpty {
                 if !hidEventSuppressor.isRunning {
                     let ready = hidEventSuppressor.start()
-                    AppLogger.shared.write("HID FILTER ready=\(ready) owner=chromecast_gatt")
+                    AppLogger.shared.write("HID FILTER ready=\(ready) owner=chromecast_controls")
                 }
                 guard hidEventSuppressor.isRunning else {
                     if isPress {
@@ -9972,19 +9978,6 @@ final class BridgeAppModel: NSObject, ObservableObject, XiaomiBluetoothBridgeDel
             phase: isPress ? .press : .release,
             profileID: profileID
         )
-    }
-
-    /// Chromecast 遥控器在 macOS 上产生的原生事件（2026-09-16 正品真机实测，`HID FILTER miss` 日志为证）。
-    ///
-    /// 与小米 RC001/RC003 的通用表存在差异：**静音键在系统侧是 `systemKey(7)`**（通用表按小米记录为 3），
-    /// 沿用通用表时抑制必然 miss、系统音量 HUD 照常出现。其余按键实测与通用表一致：
-    /// 音量 = sys0/sys1（抑制命中）；方向/确认在 CGEvent 层没有事件，但其中
-    /// left/right/select 仍会被 AACP 在更低层消费，因此公开构建固定为系统管理。
-    private func chromecastNativeEvents(for control: ChromecastRemoteControl) -> Set<RemoteNativeEvent> {
-        switch control {
-        case .mute: return [.systemKey(type: 7)]
-        default: return control.remoteButton.nativeEvents
-        }
     }
 
     /// 注册并连接 Chromecast 设备档案。档案按型号识别，不存设备标识。

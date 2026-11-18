@@ -1189,8 +1189,10 @@ RC001 真机图切换复核记录（2026-11-14）：生产公开包 `2.0.0 (320)
    左、右、确定事件不得计数，也不得执行用户已有映射。
 4. 新 Chromecast 档案的静音键默认 Return；旧档案只迁移一次原先的静音默认，之后用户手动改回
    系统静音不得再次被覆盖。
-5. 自动化运行 `ChromecastRemoteIdentityTests|ChromecastIntegrationTests|OnboardingFlowTests|LocalizationTests`；
-   真机另核对静音键 Return 不伴随系统静音，以及断连取消不会残留按下态。
+5. 自动化运行 `ChromecastRemoteIdentityTests|ChromecastIntegrationTests|OnboardingFlowTests|LocalizationTests`，
+   覆盖 IOHID 精确身份、Report ID 1 归一化与 IOHID/GATT 去重；真机必须先看到
+   `CHROMECAST IOHID phase=controls result=ready`，再核对静音键 Return 不伴随系统静音，
+   以及断连取消不会残留按下态。
 
 失败判定：只收到语音就越过普通键门禁；引导要求左/右/确定；三键被计数或执行 SayAll 映射；
 静音默认/迁移不稳定；静音产生 Return 的同时系统静音。自动化只证明解码、策略和文案，不能替代真机副作用检查。

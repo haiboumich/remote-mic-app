@@ -3,16 +3,17 @@
 ## `offline-only` 公开自编包状态（2026-11-18）
 
 本节记录当前 `offline-only` 工作树；下方 2026-09 的私有包构建号、签名和真机证据是历史记录，
-不能用于宣称当前公开适配已通过。公开适配器现通过 HID-over-GATT Report 通知提供普通按键边沿，
-并保留 ATVV `voiceStream`；触摸和电量仍未接入。左、右、确定会被 macOS AACP 同时消费，
+不能用于宣称当前公开适配已通过。公开适配器现通过精确匹配 VID/PID `0x18D1:0x9450` 的 IOHID
+虚拟设备提供普通按键边沿，并只在系统暴露 HID service `1812` 时使用 GATT 回退；ATVV
+`voiceStream` 仍走 CoreBluetooth，触摸和电量仍未接入。左、右、确定会被 macOS AACP 同时消费，
 公开包没有系统扩展可以阻止，所以三键固定显示为系统管理且不可映射。静音键的新默认动作是 Return，
 其原生系统静音事件由现有输入监控事件抑制器处理；这一行为必须通过下方真机用例后才能宣称可用。
 
 | 检查 | 当前结果 |
 | --- | --- |
-| 设备身份 | 仅接受 `Chromecast Remote`、DIS `Google Inc.` / `A0`；普通按键读取 GATT HID 服务 `1812` 的通知型 Report `2A4D` |
+| 设备身份 | 语音仅接受 `Chromecast Remote`、DIS `Google Inc.` / `A0`；普通按键仅接受 IOHID VID/PID `0x18D1:0x9450`，GATT `1812/2A4D` 只作可用时回退 |
 | ATVV | 公开 CoreBluetooth 接入，16 kHz IMA-ADPCM；本机 Build 177 实测协商 160 字节帧，历史样机曾为 247，当前适配只接受这两种；HTT 物理流不补发 `MIC_OPEN` |
-| 自动化 | GATT usage 解码、成对边沿、断连取消、默认映射迁移、系统管理边界及 Onboarding 有定向回归；自动化不等于真机通过 |
+| 自动化 | IOHID Report 归一化、精确身份、usage 解码、成对边沿、传输去重、断连取消、默认映射迁移、系统管理边界及 Onboarding 有定向回归；自动化不等于真机通过 |
 | 本地包 | Build 178 曾安装并启动，160 字节帧兼容修正已编入；最终源码已重新完成公开模式 Release 构建和包校验，但新包尚未安装验证 |
 | 系统权限 | Build 178 蓝牙为 true。测试机同时有另一份不同签名、同 Bundle ID 的 SayAll；用户为明确选择的本地包开启输入监控和辅助功能后，重启仍读到两项 false。原因尚未确认，不能归因于系统权限界面的单一条目 |
 | 虚拟音频 | `MiRemoteV 2ch` 可枚举；Build 178 的输出在 88 ms 内 Ready，Build 176 曾等待约 10 分钟，仍需冷启动复验 |
@@ -672,10 +673,10 @@ resolve、测试与 Release 构建；本机已持有私有包路径，不能替�
 
 失败判定：构建报错，或缺少私有包时启动异常、界面出现该型号的空壳入口。
 
-### 用例 11：普通按键与键位映射页（新增能力，未上真机）
+### 用例 11：普通按键与键位映射页（IOHID 修复候选，待真机验收）
 
-前置：侧边栏「按键映射」总开关**打开**。公开包不会独占 AACP 虚拟 HID；它通过 GATT 观察
-成对边沿，并只对安全键执行用户动作。
+前置：侧边栏「按键映射」总开关**打开**。公开包通过正品遥控器的 IOHID 虚拟设备观察
+成对边沿（系统暴露 `1812` 时才回退 GATT），并只对安全键执行用户动作。
 遥控器连接后按键页应自动出现「Chromecast 遥控器」档案并可选中。
 
 1. 逐个按下 11 个安全普通按键（电源、上、下、返回、Home、静音、YouTube、NETFLIX、信源、音量±）。
@@ -686,6 +687,9 @@ resolve、测试与 Release 构建；本机已持有私有包路径，不能替�
 6. 按下期间观察按键页：被按下的键卡片应点亮橙色。
 
 预期：
+- 连接后日志出现 `CHROMECAST IOHID phase=device_open result=ready` 和
+  `CHROMECAST IOHID phase=controls result=ready`；若只有 `hid_service_missing` 而没有 IOHID ready，
+  普通按键链路仍未建立。
 - 第 1 步每个安全键都出现 `CHROMECAST ACTION phase=completed result=dispatched button=…`，且 `button=`
   与遥控器上物理键位一一对应（出现错位就是 usage 表错了，不是映射错了）。
 - 第 2 步静音键产生 Return，日志同时有 `HID FILTER ... event=sys7 ... suppressed`；若系统声音被静音，
@@ -699,7 +703,7 @@ resolve、测试与 Release 构建；本机已持有私有包路径，不能替�
 **已知边界（本工作项不覆盖）**：这颗遥控器不发自动重复包，宿主也没有为它实现**按键重复**（长按方向键连续滚动），
 与小米遥控器链路不同；若需要，应作为独立工作项补，并在本手册新增用例。
 
-失败判定：按了没有任何日志（区分「报告没到」与「usage 认错」：前者没有 GATT 控制边沿，
+失败判定：按了没有任何日志（区分「报告没到」与「usage 认错」：前者没有 IOHID/GATT 控制边沿，
 后者有行但 `button=` 与物理键不符）；静音键同时触发系统静音；左、右、确定执行了 SayAll 映射；
 或映射关闭时宿主仍执行配置动作。
 
@@ -707,6 +711,7 @@ resolve、测试与 Release 构建；本机已持有私有包路径，不能替�
 
 | 阶段 | 关键字 |
 | --- | --- |
+| 普通按键 IOHID | `CHROMECAST IOHID phase=device_open result=ready`、`CHROMECAST IOHID phase=controls result=ready` |
 | 链路 | `CHROMECAST LINK state=`、`CHROMECAST CONNECTION state=` |
 | 发现（扫描） | `BLE SCANNING`、`BLE CONNECTING source=scan` |
 | 发现（系统已连接） | `BLE SYSTEM CONNECTED ADOPTED model=`、`BLE CONNECTING source=connected_peripheral` |

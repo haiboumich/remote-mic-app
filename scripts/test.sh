@@ -41,6 +41,8 @@ xcrun swiftc \
   "$ROOT/Sources/RemoteMic/MembershipFeatureTypes.swift" \
   "$ROOT/Sources/RemoteMic/ChromecastFeatureIntegration.swift" \
   "$ROOT/Sources/RemoteMic/ChromecastRemoteIdentity.swift" \
+  "$ROOT/Sources/RemoteMic/HIDReportRunLoop.swift" \
+  "$ROOT/Sources/RemoteMic/ChromecastHIDControlSource.swift" \
   "$ROOT/Sources/RemoteMic/PublicChromecastBluetoothBridge.swift" \
   "$ROOT/Sources/RemoteMic/AppLinks.swift" \
   "$ROOT/Sources/RemoteMic/Localization.swift" \

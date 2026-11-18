@@ -67,7 +67,7 @@
 
 - 控制来源在欢迎页后的单页中按构建能力显示：`offline-only` 公开构建提供小米遥控器和公开、仅本地的 Chromecast 语音适配器；Apple Package 且存在 `com.hd838a.RemoteMic.siri-remote` Installer 收据时增加苹果遥控器第 6 / 7 代两个入口，Mac Remote Package 增加对应入口。
 - 小米、Chromecast 与两代苹果遥控器作为实体遥控器显著展示；iPhone / Apple Watch 和 Web 收入默认折叠的“更多控制方式”。实体卡片和右栏使用所选设备真实图片。
-- 公开适配器的 Chromecast 语音仍只使用已验证的按住说话语义，同时通过 HID-over-GATT 提供安全普通按键。与支持原生 Fn 按住的微信输入法配对时必须保持 `hold + Fn`，不得开启 Fn 点按转换；只有控制来源不支持目标工具的 toggle 语义时，才允许使用既有的按住转点按桥接。
+- 公开适配器的 Chromecast 语音仍只使用已验证的按住说话语义；安全普通按键优先读取正品 `0x18D1:0x9450` IOHID 虚拟设备，只有 macOS 暴露 HID service `1812` 时才回退 GATT。与支持原生 Fn 按住的微信输入法配对时必须保持 `hold + Fn`，不得开启 Fn 点按转换；只有控制来源不支持目标工具的 toggle 语义时，才允许使用既有的按住转点按桥接。
 - 苹果遥控器配对说明不得使用 “Siri Remote” 用户文案，并提示蓝牙名称可能不同，应关注重置后新出现的设备。
 - iPhone、Apple Watch 和 Web App 均支持 hold/toggle；旧版未上报实际模式时按 hold 兼容并要求用户确认。
 - 实体遥控器必须由生产 BLE/HID 证据确认，macOS 系统蓝牙列表中的“已连接”不能单独通过。
@@ -90,7 +90,7 @@
 - 主设置“连接”页只保留主要音频设备、增益、状态和刷新操作，不显示豆包兼容专用卡片、BlackHole 获取入口或测试音按钮。
 - 用户可见文案必须遵守 [`PRODUCT_SPEC.md`](PRODUCT_SPEC.md) 的“用户可见文案必须使用产品语言”不变量；平台实现不得把研发、测试或内部验收状态引入页面。
 - macOS 页面或流程变化必须按 [`design-qa.md`](../../design-qa.md) 和 [`Testing/FirstRunOnboarding.md`](../../Testing/FirstRunOnboarding.md) 完成检查。
-- Onboarding 控制来源页在当前构建包含 Chromecast 适配器时显示对应实体卡片；公开适配器提供已验证的按住说话语义和候选安全普通按键 GATT 边沿，后者仍需真机门禁。右栏内容在正常窗口高度内垂直居中；控制来源页允许滚动但不显示滚动指示器。微信小程序连接页在尚未生成二维码时显示“下一步生成二维码”。
+- Onboarding 控制来源页在当前构建包含 Chromecast 适配器时显示对应实体卡片；公开适配器提供已验证的按住说话语义和候选安全普通按键 IOHID 边沿（GATT 回退），后者仍需真机门禁。右栏内容在正常窗口高度内垂直居中；控制来源页允许滚动但不显示滚动指示器。微信小程序连接页在尚未生成二维码时显示“下一步生成二维码”。
 - 主设置“按键映射”页必须按当前型号显示真实设备图：Chromecast 使用 `Chromecast-remote-photo.png`，不得回退到 RC003 图片；未识别型号仍显示缺图占位，不得冒充已知设备。
 
 ## 实现与测试入口

@@ -52,6 +52,110 @@ struct ChromecastRemoteIdentityTests {
         #expect(ChromecastGATTControlDecoder.control(for: 0x02) == nil)
     }
 
+    @Test func matchesOnlyTheGenuineChromecastIOHIDIdentity() {
+        #expect(ChromecastHIDControlSource.matches(vendorID: 0x18D1, productID: 0x9450))
+        #expect(!ChromecastHIDControlSource.matches(vendorID: 0x18D1, productID: 0x9451))
+        #expect(!ChromecastHIDControlSource.matches(vendorID: 0x2717, productID: 0x9450))
+    }
+
+    @Test func normalizesBothObservedIOHIDCallbackShapes() {
+        #expect(ChromecastHIDReportDecoder.usage(
+            reportID: 1,
+            data: Data([0x01, 0x0B, 0x00])
+        ) == 0x0B)
+        #expect(ChromecastHIDReportDecoder.usage(
+            reportID: 1,
+            data: Data([0x08, 0x00])
+        ) == 0x08)
+        #expect(ChromecastHIDReportDecoder.usage(
+            reportID: 1,
+            data: Data([0x01, 0x00, 0x00])
+        ) == 0)
+        #expect(ChromecastHIDReportDecoder.usage(
+            reportID: 2,
+            data: Data([0x01, 0x0B, 0x00])
+        ) == nil)
+        #expect(ChromecastHIDReportDecoder.usage(
+            reportID: 1,
+            data: Data([0x01, 0x0B, 0x01])
+        ) == nil)
+    }
+
+    @Test func ioHIDEmitsBackAndMuteEdgesWithoutDuplicates() throws {
+        var decoder = ChromecastHIDReportDecoder()
+        let backDown = decoder.ingest(reportID: 1, data: Data([0x01, 0x0B, 0x00]))
+        #expect(backDown.count == 1)
+        #expect(try #require(backDown.first).control == .back)
+        #expect(try #require(backDown.first).phase == .began)
+        #expect(decoder.ingest(reportID: 1, data: Data([0x0B, 0x00])).isEmpty)
+
+        let replacement = decoder.ingest(reportID: 1, data: Data([0x01, 0x08, 0x00]))
+        #expect(replacement.map(\.phase) == [.cancelled, .began])
+        #expect(replacement.first?.control == .back)
+        #expect(replacement.last?.control == .mute)
+
+        let muteUp = decoder.ingest(reportID: 1, data: Data([0x01, 0x00, 0x00]))
+        #expect(muteUp.count == 1)
+        #expect(muteUp.first?.control == .mute)
+        #expect(muteUp.first?.phase == .ended)
+        #expect(decoder.ingest(reportID: 1, data: Data([0x00, 0x00])).isEmpty)
+    }
+
+    @Test func ioHIDCancelsActiveControlOnMalformedReportOrRemoval() throws {
+        var decoder = ChromecastHIDReportDecoder()
+        _ = decoder.ingest(reportID: 1, data: Data([0x01, 0x08, 0x00]))
+        let malformed = decoder.ingest(reportID: 1, data: Data([0x01, 0x08, 0x01]))
+        #expect(malformed.count == 1)
+        #expect(try #require(malformed.first).phase == .cancelled)
+        #expect(try #require(malformed.first).cancellationReason == "malformed_hid_report")
+
+        _ = decoder.ingest(reportID: 1, data: Data([0x01, 0x0B, 0x00]))
+        #expect(decoder.cancel(reason: "device_removed")?.cancellationReason == "device_removed")
+    }
+
+    @Test func ioHIDWinsTransportDeduplicationAndControlsRuntimeCapability() {
+        #expect(ChromecastControlTransportPolicy.accepts(.ioHID, ioHIDAvailable: true))
+        #expect(!ChromecastControlTransportPolicy.accepts(.gatt, ioHIDAvailable: true))
+        #expect(ChromecastControlTransportPolicy.accepts(.gatt, ioHIDAvailable: false))
+
+        #expect(ChromecastPublicControlCapabilityPolicy.declared(
+            voiceReady: false,
+            ioHIDAvailable: true,
+            gattAvailable: false
+        ).isEmpty)
+        #expect(ChromecastPublicControlCapabilityPolicy.declared(
+            voiceReady: true,
+            ioHIDAvailable: false,
+            gattAvailable: false
+        ) == [.voiceStream])
+        #expect(ChromecastPublicControlCapabilityPolicy.declared(
+            voiceReady: true,
+            ioHIDAvailable: true,
+            gattAvailable: false
+        ) == [.voiceStream, .controlEdges])
+        #expect(ChromecastPublicControlCapabilityPolicy.declared(
+            voiceReady: true,
+            ioHIDAvailable: false,
+            gattAvailable: true
+        ) == [.voiceStream, .controlEdges])
+    }
+
+    @Test func prearmsOnlyTheNativeEventsObservedForMuteAndVolume() {
+        #expect(ChromecastNativeEventPolicy.nativeEvents(for: .mute) == [
+            .systemKey(type: 7),
+        ])
+        #expect(ChromecastNativeEventPolicy.nativeEvents(for: .volumeUp) ==
+            ChromecastRemoteControl.volumeUp.remoteButton.nativeEvents)
+        #expect(ChromecastNativeEventPolicy.nativeEvents(for: .volumeDown) ==
+            ChromecastRemoteControl.volumeDown.remoteButton.nativeEvents)
+
+        for control in ChromecastRemoteControl.allCases where
+            control != .mute && control != .volumeUp && control != .volumeDown
+        {
+            #expect(ChromecastNativeEventPolicy.nativeEvents(for: control).isEmpty)
+        }
+    }
+
     @Test func emitsPairedEdgesAndIgnoresDuplicateReports() throws {
         var decoder = ChromecastGATTControlDecoder()
         let pressed = decoder.ingest(Data([0x08, 0, 0, 0, 0, 0, 0, 0]))

@@ -196,6 +196,21 @@ enum ChromecastRemoteControl: String, CaseIterable, Equatable {
     }
 }
 
+/// 正品遥控器在 macOS 上实际产生的可拦截原生事件（2026-09-16 真机日志为证）。
+///
+/// 静音在系统侧是 `systemKey(7)`，音量为通用的 sys0/sys1；其余按键不经过 CGEvent，
+/// 不能为它们预登记通用键码，否则会误吞同一时间窗口内用户真实键盘的方向、Return 或 Escape。
+/// left/right/select 仍被 AACP 在更低层消费，因此公开构建另行固定为系统管理。
+enum ChromecastNativeEventPolicy {
+    static func nativeEvents(for control: ChromecastRemoteControl) -> Set<RemoteNativeEvent> {
+        switch control {
+        case .mute: return [.systemKey(type: 7)]
+        case .volumeUp, .volumeDown: return control.remoteButton.nativeEvents
+        default: return []
+        }
+    }
+}
+
 enum ChromecastRemoteControlPhase: String, Equatable {
     case began
     case ended
@@ -220,8 +235,8 @@ final class ChromecastFeatureIntegration {
     ]
 
     /// Both adapters can emit paired ordinary-button edges. The public adapter
-    /// obtains them from the verified HID-over-GATT Report characteristic and
-    /// publishes the runtime capability only after that subscription is ready.
+    /// prefers the paired remote's exact IOHID device and keeps GATT only as a
+    /// fallback for systems that expose service 1812 through CoreBluetooth.
     static var supportsOrdinaryControlEdges: Bool {
         #if SAYALL_CHROMECAST_ENABLED && canImport(SayAllChromecast)
         return true
@@ -238,8 +253,9 @@ final class ChromecastFeatureIntegration {
         #endif
     }
     static var nativeInputProductIDs: Set<Int> {
-        // The public adapter consumes GATT reports and does not seize or rewrite
-        // the macOS virtual HID device. Private packages own their own product IDs.
+        // The public adapter owns 0x9450 through its dedicated IOHID source and
+        // must not also feed it through the generic native-key mapper. Private
+        // packages advertise their own preparation inputs through their package.
         return []
     }
     static var requiresNativeInputPreparation: Bool {
@@ -280,6 +296,8 @@ final class ChromecastFeatureIntegration {
     var onVoiceStop: ((ChromecastVoiceEndReason) -> Void)?
     /// 普通按键的按下/抬起边沿。宿主据此执行键位映射。
     var onControlEvent: ((ChromecastRemoteControlEvent) -> Void)?
+    /// IOHID 报告线程上的提前登记。只用于在主线程处理前拦截静音/音量原生事件。
+    var onControlPrearm: ((ChromecastRemoteControl) -> Void)?
     /// HID 侧是否看到了本遥控器（用于诊断，不参与业务判断）。
     var onHIDPresenceChange: ((Bool) -> Void)?
     /// 解码后的 16 kHz 单声道 PCM。
@@ -335,6 +353,9 @@ final class ChromecastFeatureIntegration {
         feature.onControlEvent = { [weak self] event in
             self?.onControlEvent?(event)
         }
+        feature.onControlPrearm = { [weak self] control in
+            self?.onControlPrearm?(control)
+        }
         feature.onHIDPresenceChange = { [weak self] isPresent in
             self?.onHIDPresenceChange?(isPresent)
         }
@@ -383,7 +404,7 @@ final class ChromecastFeatureIntegration {
     }
 
     /// 宿主「按键映射」总开关。私有包可据此独占 HID；公开适配器继续观察
-    /// GATT 边沿供新手引导取证，而宿主在关闭时不执行配置动作。
+    /// IOHID/GATT 边沿供新手引导取证，而宿主在关闭时不执行配置动作。
     ///
     /// 幂等，可安全重复调用。
     func setControlMappingEnabled(_ enabled: Bool) {

@@ -90,6 +90,14 @@
   `hidEventSuppressor.arm(nativeEvents:edge:)` 让 CGEventTap 吞掉随之到达的原生事件。
   **Chromecast 链路此前漏了这一步（HID FILTER 从未启动）**，修复见 build 186。
 
+**公开 `offline-only` 补充（2026-11-18）**：上面的 IOHID 报告证据适用于正品
+`0x18D1:0x9450`，并未被后来的 CoreBluetooth 方案取代。用户从失败包 `d6b7debe` 提取的真机日志
+明确记录 `hid_service_missing`：已配对设备的 ATVV 可用，但 macOS 不向 CoreBluetooth 暴露 HID
+service `1812`。因此公开适配器现在恢复这条已验证的 IOHID Report ID 1 读取路径；GATT `2A4D`
+只在系统确实暴露时回退。这里的“不要使用 IOHID”仅针对上方**假冒遥控器**观察模式零报告的结论，
+不能外推到正品。静音仍需报告线程提前登记 CGEvent 抑制器；left/right/select 的 AACP 系统行为仍无法
+由普通 App 阻止，继续固定为系统管理。
+
 ### 正品按键的原生事件实测表（2026-09-16，`HID FILTER arm/miss/suppressed` 日志为证）
 
 | 按键 | 通用表（小米 RC003） | 正品 Chromecast 实测 | 结果 |
