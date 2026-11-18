@@ -63,4 +63,14 @@ struct ChromecastFunctionKeyDriveTests {
             ) == .taps
         )
     }
+
+    @Test func stagedFnTapConversionOverridesAHoldOnlyPublicRemote() {
+        #expect(
+            ChromecastFunctionKeyDrive.resolve(
+                voiceMode: .hold,
+                toolSupportsHoldVoiceRecording: true,
+                forceTapConversion: true
+            ) == .taps
+        )
+    }
 }

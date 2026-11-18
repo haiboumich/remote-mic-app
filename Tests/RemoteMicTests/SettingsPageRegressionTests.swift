@@ -2516,7 +2516,7 @@ struct SettingsPageRegressionTests {
         #expect(!captureSource.contains("API"))
     }
 
-    @Test func profileOwnsSharingAboveStatisticsWithoutASidebarEntry() throws {
+    @Test func offlineStatisticsPageKeepsMetricsWithoutExternalSharing() throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -2531,15 +2531,17 @@ struct SettingsPageRegressionTests {
         #expect(!source.contains("share.sidebar.accessibility_label"))
         #expect(source.contains("if visibleSections.contains(.statistics)"))
         #expect(source.contains("sidebarButton(.statistics)"))
-        #expect(source.contains("ShareCard(url: shareURL)"))
         #expect(!source.contains(".popover"))
+        #expect(!source.contains("sharePanel(for: .statistics)"))
 
-        let profileStart = try #require(source.range(of: "private var statisticsPage"))
+        let statisticsStart = try #require(source.range(of: "private var statisticsPage"))
         let summaryStart = try #require(source.range(of: "private var statisticsSummaryGrid"))
-        let profileSource = source[profileStart.lowerBound..<summaryStart.lowerBound]
-        let sharePosition = try #require(profileSource.range(of: "sharePanel(for: .statistics)"))
-        let metricsPosition = try #require(profileSource.range(of: "statisticsSummaryGrid"))
-        #expect(sharePosition.lowerBound < metricsPosition.lowerBound)
+        let statisticsSource = source[statisticsStart.lowerBound..<summaryStart.lowerBound]
+        #expect(statisticsSource.contains("statisticsSummaryGrid"))
+        #expect(statisticsSource.contains("statisticsRankingPanel"))
+        #expect(statisticsSource.contains("statisticsCalendarPanel"))
+        #expect(statisticsSource.contains("statisticsVoiceSessionRankingPanel"))
+        #expect(!statisticsSource.contains("sharePanel"))
     }
 
     @MainActor

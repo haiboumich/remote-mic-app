@@ -972,6 +972,10 @@
 "onboarding.remote.button_detail" = "Press any button except the voice button.";
 "onboarding.remote.voice_button_mistake.title" = "That was the voice button";
 "onboarding.remote.voice_button_mistake.detail" = "This step checks button controls. Press the center OK button or an arrow button instead.";
+"onboarding.remote.voice_only.waiting" = "Waiting for the voice button";
+"onboarding.remote.voice_only.waiting_detail" = "Hold the Voice/Assistant button on Chromecast Voice Remote. This public adapter does not take over arrow or OK buttons.";
+"onboarding.remote.voice_only.received" = "Voice button detected";
+"onboarding.remote.voice_only.received_detail" = "The Chromecast voice path responded. You can continue to audio output setup.";
 "onboarding.remote.reconnect" = "Search Again";
 "onboarding.remote.retry_input" = "Retry Button Detection";
 "onboarding.remote.open_bluetooth" = "Open Bluetooth Settings";
@@ -1039,6 +1043,8 @@
 "onboarding.controls.mobile_slot" = "Control %@";
 "onboarding.controls.waiting" = "Try another button";
 "onboarding.controls.ready" = "Your button controls are working";
+"onboarding.controls.voice_only.title" = "This build uses the voice button only";
+"onboarding.controls.voice_only.detail" = "The public offline adapter supports the Chromecast voice stream but does not take over arrows, OK, Back, or other ordinary buttons. macOS keeps handling those buttons normally.";
 "onboarding.secure_input.title" = "System security may be blocking remote buttons";
 "onboarding.secure_input.detail" = "Quit apps that are asking for a password or using a secure keyboard, then check again.";
 "onboarding.secure_input.recheck" = "Check again";
@@ -1155,6 +1161,7 @@
 "onboarding.side.web_connected" = "Mini program connected";
 "onboarding.side.control_selected" = "Control method selected";
 "onboarding.side.button_received" = "Button press detected";
+"onboarding.side.voice_button_received" = "Voice button detected";
 "onboarding.side.device_found" = "Supported virtual audio device detected";
 "onboarding.side.device_selected" = "Virtual audio device selected";
 "onboarding.side.audio_ready" = "Audio output ready";
@@ -1164,6 +1171,7 @@
 "onboarding.side.transcript" = "Text appeared";
 "onboarding.side.three_buttons" = "Everyday buttons tried";
 "onboarding.side.mapping_enabled" = "Custom buttons enabled";
+"onboarding.side.voice_only" = "Voice-button mode";
 "onboarding.diagnostics.copy" = "Copy Setup Diagnostics";
 "onboarding.recovery.permission.bluetooth_denied.title" = "Bluetooth access is still needed";
 "onboarding.recovery.permission.bluetooth_denied.detail" = "Allow Bluetooth access so SayAll can find your paired remote.";

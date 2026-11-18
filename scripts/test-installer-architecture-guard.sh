@@ -21,7 +21,7 @@ extract_stage_block() {
   local script_file="$1"
   local stage_name="$2"
   /usr/bin/awk -v stage_name="$stage_name" '
-    $0 ~ ("^run_release_stage " stage_name " ") { capture = 1 }
+    $0 ~ ("^[[:space:]]*run_release_stage " stage_name " ") { capture = 1 }
     capture { print }
     capture && NF == 0 { exit }
   ' "$script_file"
@@ -59,7 +59,7 @@ mutate_stage_with_sign() {
   local tool_name="$3"
   local destination_script="$4"
   /usr/bin/awk -v stage_name="$stage_name" -v tool_name="$tool_name" '
-    $0 ~ ("^run_release_stage " stage_name " ") { capture = 1 }
+    $0 ~ ("^[[:space:]]*run_release_stage " stage_name " ") { capture = 1 }
     {
       print
       if (capture && !mutated && index($0, tool_name) != 0) {
@@ -91,6 +91,25 @@ for distribution in \
     exit 1
   fi
   /usr/bin/grep -Fq 'start_selected="siriRemoteSupportWasPreviouslyInstalled()"' "$distribution"
+done
+
+for distribution in \
+  "$ROOT/packaging/doubao-driver/distribution/apple-silicon-public.xml" \
+  "$ROOT/packaging/doubao-driver/distribution/intel-public.xml"; do
+  /usr/bin/xmllint --noout "$distribution"
+  /usr/bin/grep -Fq 'hostArchitectures="arm64,x86_64"' "$distribution"
+  /usr/bin/grep -Fq "system.sysctl('hw.optional.arm64')" "$distribution"
+  /usr/bin/grep -Fq "my.result.type = 'Fatal'" "$distribution"
+  /usr/bin/grep -Fq 'my.result.message = system.localizedString' "$distribution"
+  /usr/bin/grep -Fq '<installation-check script="installationCheck()"/>' "$distribution"
+  /usr/bin/grep -Fq '>RemoteMicComponent.pkg</pkg-ref>' "$distribution"
+  /usr/bin/grep -Fq 'customize="never"' "$distribution"
+  if /usr/bin/grep -Eq \
+      'SiriRemoteComponent|siri-remote|com\.hd838a\.RemoteMic\.siri-remote|receiptForIdentifier' \
+      "$distribution"; then
+    print -u2 "public Installer distribution unexpectedly includes Siri Remote: $distribution"
+    exit 1
+  fi
 done
 
 python3 - "$ROOT" <<'PY_SIRI_RECEIPT'
@@ -173,7 +192,11 @@ fi
 /usr/bin/grep -Fq 'installer-signing-probe-productsign' "$BUILD_SCRIPT"
 /usr/bin/grep -Fq 'run_locked_productsign installer-productsign' "$BUILD_SCRIPT"
 /usr/bin/grep -Fq 'plutil -insert PackageBuild -string "$BUILD"' "$BUILD_SCRIPT"
-/usr/bin/grep -Fq 'Siri Remote helper is missing from the release App' "$BUILD_SCRIPT"
+/usr/bin/grep -Fq 'SayAllSiriRemoteIncluded' "$BUILD_SCRIPT"
+/usr/bin/grep -Fq 'PUBLIC_DISTRIBUTION=' "$BUILD_SCRIPT"
+/usr/bin/grep -Fq 'DISTRIBUTION="$PUBLIC_DISTRIBUTION"' "$BUILD_SCRIPT"
+/usr/bin/grep -Fq 'if [[ "$SAYALL_SIRI_REMOTE_INCLUDED" == "true" ]]' "$BUILD_SCRIPT"
+/usr/bin/grep -Fq 'OPTIONAL_APP_EXECUTABLES=' "$POSTINSTALL"
 /usr/bin/grep -Fq '/usr/bin/lockf -k -t "$INSTALLER_SIGNING_LOCK_TIMEOUT_SECONDS"' \
   "$BUILD_SCRIPT"
 if /usr/bin/grep -Fq 'INSTALL_COMPONENT_SIGNING_ARGS' "$BUILD_SCRIPT"; then

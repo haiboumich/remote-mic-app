@@ -45,11 +45,11 @@ struct OnboardingFlowTests {
     }
     #endif
 
-    @Test func onboardingSourceVisibilityHidesChromecastButKeepsOtherSources() {
+    @Test func onboardingSourceVisibilityKeepsEveryBuildSupportedSource() {
         let visible = OnboardingControlSourceVisibilityPolicy.visibleSources(
             OnboardingControlSource.allCases
         )
-        #expect(!visible.contains(.chromecastRemote))
+        #expect(visible.contains(.chromecastRemote))
         #expect(visible.contains(.xiaomiRemote))
         #expect(visible.contains(.appleCompanion))
         #expect(visible.contains(.webRemote))
@@ -144,15 +144,15 @@ struct OnboardingFlowTests {
         }
     }
 
-    @Test @MainActor func hiddenChromecastSelectionReturnsToTheSourcePage() throws {
+    @Test @MainActor func chromecastSelectionIsVisibleAndPreserved() throws {
         let fixture = try OnboardingOffscreenFixture(
             step: .remoteAvailability,
             controlSource: .chromecastRemote
         )
         defer { fixture.close() }
         #expect(fixture.settings.onboardingStep == .remoteAvailability)
-        #expect(fixture.settings.onboardingControlSource == .unselected)
-        #expect(fixture.probe.actions["control-source.chromecast_remote"] == nil)
+        #expect(fixture.settings.onboardingControlSource == .chromecastRemote)
+        #expect(fixture.probe.actions["control-source.chromecast_remote"] != nil)
     }
 
     @Test @MainActor func missingSiriRemotePackageRemovesCardsAndRepairsSavedSelection() throws {
@@ -852,7 +852,6 @@ struct OnboardingFlowTests {
             contentsOf: root.appendingPathComponent("Sources/RemoteMic/OnboardingView.swift"),
             encoding: .utf8
         )
-
         #expect(viewSource.contains("onboardingActionButton(id: id, action: action)"))
         #expect(viewSource.contains("action: requestBluetoothPermission"))
         #expect(viewSource.contains("action: requestInputMonitoringPermission"))
@@ -1325,6 +1324,74 @@ struct OnboardingFlowTests {
             voiceTool: .typeless,
             capabilities: capabilities
         ))
+    }
+
+    @Test func publicChromecastUsesVoiceEvidenceAndSkipsOrdinaryControls() {
+        #expect(!ChromecastFeatureIntegration.publicDeclaredCapabilities.contains(.controlEdges))
+        guard !ChromecastFeatureIntegration.supportsOrdinaryControlEdges else {
+            // A private build has a paired adapter that emits ordinary control
+            // edges, so it intentionally keeps the normal three-button gate.
+            return
+        }
+
+        var capabilities = OnboardingCapabilities(remoteConnected: true)
+        #expect(!OnboardingRemoteEvidencePolicy.requiresOrdinaryButtonObservation(
+            for: .chromecastRemote
+        ))
+        #expect(!OnboardingFlowPolicy.canContinue(
+            from: .remote,
+            voiceTool: .typeless,
+            controlSource: .chromecastRemote,
+            capabilities: capabilities
+        ))
+
+        capabilities.remoteButtonObserved = true
+        #expect(!OnboardingFlowPolicy.canContinue(
+            from: .remote,
+            voiceTool: .typeless,
+            controlSource: .chromecastRemote,
+            capabilities: capabilities
+        ))
+
+        capabilities.remoteButtonObserved = false
+        capabilities.remoteVoiceButtonObserved = true
+        #expect(OnboardingFlowPolicy.canContinue(
+            from: .remote,
+            voiceTool: .typeless,
+            controlSource: .chromecastRemote,
+            capabilities: capabilities
+        ))
+        #expect(OnboardingFlowPolicy.canContinue(
+            from: .controls,
+            voiceTool: .typeless,
+            controlSource: .chromecastRemote,
+            capabilities: capabilities
+        ))
+
+        let remoteContext = FirstUseDiagnosticContext(
+            step: .remote,
+            controlSource: .chromecastRemote,
+            capabilities: capabilities,
+            hasSelectedAudioUID: false
+        )
+        #expect(remoteContext.failureReason == nil)
+
+        capabilities.remoteVoiceButtonObserved = false
+        let missingVoiceContext = FirstUseDiagnosticContext(
+            step: .remote,
+            controlSource: .chromecastRemote,
+            capabilities: capabilities,
+            hasSelectedAudioUID: false
+        )
+        #expect(missingVoiceContext.failureReason == .remoteButtonNotReady)
+
+        let controlsContext = FirstUseDiagnosticContext(
+            step: .controls,
+            controlSource: .chromecastRemote,
+            capabilities: capabilities,
+            hasSelectedAudioUID: false
+        )
+        #expect(controlsContext.failureReason == nil)
     }
 
     @Test func voiceToolSelectionKeepsSystemFnInstructionAdvisory() {
@@ -2938,8 +3005,15 @@ struct OnboardingFlowTests {
             contentsOf: root.appendingPathComponent("Sources/RemoteMic/OnboardingView.swift"),
             encoding: .utf8
         )
+        let modelSource = try String(
+            contentsOf: root.appendingPathComponent("Sources/RemoteMic/BridgeAppModel.swift"),
+            encoding: .utf8
+        )
         #expect(viewSource.contains("settings.beginOnboardingVoiceTrial(plan)"))
         #expect(viewSource.contains("model.setVoiceFnTapModeEnabled(plan.fnTapModeEnabled)"))
+        #expect(modelSource.contains(
+            "forceTapConversion: settings.voiceKeyMode == .function &&"
+        ))
     }
 
     @Test func existingInstallSkipsOnboardingWhileNewAndResumedFlowsRemainRequired() throws {
@@ -3674,7 +3748,7 @@ struct OnboardingFlowTests {
             invoke("control-source.more", on: remoteSource)
         }
         #expect(!remoteSource.settings.siriRemoteEnabled)
-        #expect(remoteSource.probe.actions["control-source.chromecast_remote"] == nil)
+        #expect(remoteSource.probe.actions["control-source.chromecast_remote"] != nil)
         let visibleSources = OnboardingControlSourceVisibilityPolicy.visibleSources(
             OnboardingBuildCapabilities.availableControlSources
         )

@@ -9499,7 +9499,9 @@ final class BridgeAppModel: NSObject, ObservableObject, XiaomiBluetoothBridgeDel
         .resolve(
             voiceMode: effectiveChromecastVoiceMode,
             toolSupportsHoldVoiceRecording: settings.onboardingVoiceTool
-                .supportsHoldVoiceRecording
+                .supportsHoldVoiceRecording,
+            forceTapConversion: settings.voiceKeyMode == .function &&
+                settings.voiceFnTapModeEnabled
         )
     }
 

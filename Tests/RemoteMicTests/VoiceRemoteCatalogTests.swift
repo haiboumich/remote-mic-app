@@ -76,6 +76,26 @@ struct VoiceRemoteCatalogTests {
         #expect(VoiceRemoteCatalog.photoResource(for: .chromecastVoiceRemote) == nil)
     }
 
+    @Test func publicMappingCanvasUsesTheChromecastPhotoWithoutChangingTheXiaomiCatalog() {
+        #expect(
+            MappingRemoteImageResource.resourceName(for: .chromecastVoiceRemote)
+                == "Chromecast-remote-photo"
+        )
+        #expect(MappingRemoteImageResource.resourceName(for: .rc001) == "RC001-remote-photo")
+        #expect(MappingRemoteImageResource.resourceName(for: .rc003) == "RC003-remote-photo")
+        #expect(MappingRemoteImageResource.resourceName(for: .unknown) == nil)
+
+        let repoRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        #expect(FileManager.default.fileExists(
+            atPath: repoRoot.appendingPathComponent(
+                "Resources/Chromecast-remote-photo.png"
+            ).path
+        ))
+    }
+
     @Test func advertisedNamesCoverEveryNameTheBridgeHasEverAdopted() {
         // 真机日志里出现过的、本桥应当继续采用的广播名，一个都不能少。
         for name in ["mi rc", "小米蓝牙语音遥控器", "arn9", "小米蓝牙遥控器2", "小米蓝牙遥控器2 pro"] {

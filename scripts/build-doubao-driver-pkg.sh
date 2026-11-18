@@ -37,7 +37,9 @@ UNSIGNED_INSTALL_PACKAGE="$WORK_DIR/Install SayAll-unsigned.pkg"
 UNSIGNED_UNINSTALL_PACKAGE="$WORK_DIR/Uninstall SayAll-unsigned.pkg"
 SIGNING_PROBE_UNSIGNED_PACKAGE="$WORK_DIR/Installer Signing Probe-unsigned.pkg"
 SIGNING_PROBE_PACKAGE="$WORK_DIR/Installer Signing Probe.pkg"
-DISTRIBUTION="$ROOT/packaging/doubao-driver/distribution/$RELEASE_VARIANT.xml"
+FULL_DISTRIBUTION="$ROOT/packaging/doubao-driver/distribution/$RELEASE_VARIANT.xml"
+PUBLIC_DISTRIBUTION="$ROOT/packaging/doubao-driver/distribution/$RELEASE_VARIANT-public.xml"
+DISTRIBUTION="$FULL_DISTRIBUTION"
 DISTRIBUTION_RESOURCES="$ROOT/packaging/doubao-driver/distribution/Resources"
 
 move_existing_path_to_trash() {
@@ -76,7 +78,8 @@ trap cleanup EXIT
 
 test -x /usr/bin/pkgbuild
 test -x /usr/bin/productbuild
-test -f "$DISTRIBUTION"
+test -f "$FULL_DISTRIBUTION"
+test -f "$PUBLIC_DISTRIBUTION"
 test -d "$DISTRIBUTION_RESOURCES/en.lproj"
 test -d "$DISTRIBUTION_RESOURCES/zh-Hans.lproj"
 test -f "$DISTRIBUTION_RESOURCES/en.lproj/License.txt"
@@ -144,12 +147,23 @@ fi
 "$ROOT/scripts/verify-doubao-driver.sh" "$DRIVER" brand
 "$ROOT/scripts/verify-doubao-driver.sh" "$LEGACY_DRIVER" legacy
 "$ROOT/scripts/verify-app.sh" "$APP"
-if [[ ! -x "$APPLE_REMOTE_HCI_SERVICE" ]]; then
-  print -u2 "Siri Remote helper is missing from the release App; configure SAYALL_SIRI_REMOTE_PACKAGE_PATH before building the Installer package"
-  exit 1
-fi
-test -f "$APPLE_REMOTE_HCI_PLIST"
-/usr/bin/plutil -lint "$APPLE_REMOTE_HCI_PLIST"
+SAYALL_SIRI_REMOTE_INCLUDED="$(/usr/bin/plutil -extract SayAllSiriRemoteIncluded raw -o - \
+  "$APP/Contents/Info.plist" 2>/dev/null || true)"
+case "$SAYALL_SIRI_REMOTE_INCLUDED" in
+  true)
+    test -x "$APPLE_REMOTE_HCI_SERVICE"
+    test -f "$APPLE_REMOTE_HCI_PLIST"
+    /usr/bin/plutil -lint "$APPLE_REMOTE_HCI_PLIST"
+    ;;
+  false)
+    test ! -e "$APPLE_REMOTE_HCI_SERVICE"
+    DISTRIBUTION="$PUBLIC_DISTRIBUTION"
+    ;;
+  *)
+    print -u2 "App has an invalid SayAllSiriRemoteIncluded marker"
+    exit 1
+    ;;
+esac
 
 move_existing_path_to_trash "$INSTALL_PACKAGE" "${INSTALL_PACKAGE:t}"
 move_existing_path_to_trash "$LEGACY_INSTALL_PACKAGE" "${LEGACY_INSTALL_PACKAGE:t}"
@@ -157,9 +171,12 @@ move_existing_path_to_trash "$UNINSTALL_PACKAGE" "${UNINSTALL_PACKAGE:t}"
 move_existing_path_to_trash "$LEGACY_UNINSTALL_PACKAGE" "${LEGACY_UNINSTALL_PACKAGE:t}"
 /bin/mkdir -p \
   "$PAYLOAD_ROOT/Applications" \
-  "$PAYLOAD_ROOT/Library/Application Support/RemoteMic/Installer" \
-  "$SIRI_REMOTE_PAYLOAD_ROOT/Library/LaunchDaemons" \
-  "$SIRI_REMOTE_PAYLOAD_ROOT/Library/PrivilegedHelperTools"
+  "$PAYLOAD_ROOT/Library/Application Support/RemoteMic/Installer"
+if [[ "$SAYALL_SIRI_REMOTE_INCLUDED" == "true" ]]; then
+  /bin/mkdir -p \
+    "$SIRI_REMOTE_PAYLOAD_ROOT/Library/LaunchDaemons" \
+    "$SIRI_REMOTE_PAYLOAD_ROOT/Library/PrivilegedHelperTools"
+fi
 /usr/bin/ditto --norsrc --noextattr --noqtn --noacl \
   "$APP" "$PAYLOAD_ROOT/Applications/SayAll.app"
 /usr/bin/ditto --norsrc --noextattr --noqtn --noacl \
@@ -170,20 +187,24 @@ move_existing_path_to_trash "$LEGACY_UNINSTALL_PACKAGE" "${LEGACY_UNINSTALL_PACK
   "$PAYLOAD_ROOT/Library/Application Support/RemoteMic/Installer/legacy/MiRemoteV2ch.driver"
 /usr/bin/ditto --norsrc --noextattr --noqtn --noacl \
   "$ROOT/packaging/doubao-driver/install" "$INSTALL_SCRIPTS"
-/usr/bin/ditto --norsrc --noextattr --noqtn --noacl \
-  "$APPLE_REMOTE_HCI_SERVICE" \
-  "$SIRI_REMOTE_PAYLOAD_ROOT/Library/PrivilegedHelperTools/com.hd838a.SayAll.AppleRemoteHCIService"
-/usr/bin/ditto --norsrc --noextattr --noqtn --noacl \
-  "$APPLE_REMOTE_HCI_PLIST" \
-  "$SIRI_REMOTE_PAYLOAD_ROOT/Library/LaunchDaemons/com.hd838a.SayAll.AppleRemoteHCIService.plist"
-/usr/bin/ditto --norsrc --noextattr --noqtn --noacl \
-  "$ROOT/packaging/doubao-driver/siri-remote/install" "$SIRI_REMOTE_INSTALL_SCRIPTS"
+if [[ "$SAYALL_SIRI_REMOTE_INCLUDED" == "true" ]]; then
+  /usr/bin/ditto --norsrc --noextattr --noqtn --noacl \
+    "$APPLE_REMOTE_HCI_SERVICE" \
+    "$SIRI_REMOTE_PAYLOAD_ROOT/Library/PrivilegedHelperTools/com.hd838a.SayAll.AppleRemoteHCIService"
+  /usr/bin/ditto --norsrc --noextattr --noqtn --noacl \
+    "$APPLE_REMOTE_HCI_PLIST" \
+    "$SIRI_REMOTE_PAYLOAD_ROOT/Library/LaunchDaemons/com.hd838a.SayAll.AppleRemoteHCIService.plist"
+  /usr/bin/ditto --norsrc --noextattr --noqtn --noacl \
+    "$ROOT/packaging/doubao-driver/siri-remote/install" "$SIRI_REMOTE_INSTALL_SCRIPTS"
+fi
 /usr/bin/ditto --norsrc --noextattr --noqtn --noacl \
   "$RELEASE_CONFIG_PLIST" "$INSTALL_SCRIPTS/release-variant.plist"
-/usr/bin/ditto --norsrc --noextattr --noqtn --noacl \
-  "$RELEASE_CONFIG_PLIST" "$SIRI_REMOTE_INSTALL_SCRIPTS/release-variant.plist"
 write_package_build_metadata "$INSTALL_SCRIPTS/release-variant.plist"
-write_package_build_metadata "$SIRI_REMOTE_INSTALL_SCRIPTS/release-variant.plist"
+if [[ "$SAYALL_SIRI_REMOTE_INCLUDED" == "true" ]]; then
+  /usr/bin/ditto --norsrc --noextattr --noqtn --noacl \
+    "$RELEASE_CONFIG_PLIST" "$SIRI_REMOTE_INSTALL_SCRIPTS/release-variant.plist"
+  write_package_build_metadata "$SIRI_REMOTE_INSTALL_SCRIPTS/release-variant.plist"
+fi
 /usr/bin/ditto --norsrc --noextattr --noqtn --noacl \
   "$ROOT/packaging/doubao-driver/uninstall" "$UNINSTALL_SCRIPTS"
 /usr/bin/ditto --norsrc --noextattr --noqtn --noacl \
@@ -240,15 +261,17 @@ run_release_stage installer-component-pkgbuild "$RELEASE_PKGBUILD_TIMEOUT_SECOND
   --ownership recommended \
   "$INSTALL_COMPONENT_PACKAGE"
 
-run_release_stage siri-remote-component-pkgbuild "$RELEASE_PKGBUILD_TIMEOUT_SECONDS" \
-  /usr/bin/pkgbuild \
-  --root "$SIRI_REMOTE_PAYLOAD_ROOT" \
-  --scripts "$SIRI_REMOTE_INSTALL_SCRIPTS" \
-  --identifier "com.hd838a.RemoteMic.siri-remote" \
-  --version "$VERSION" \
-  --install-location / \
-  --ownership recommended \
-  "$SIRI_REMOTE_COMPONENT_PACKAGE"
+if [[ "$SAYALL_SIRI_REMOTE_INCLUDED" == "true" ]]; then
+  run_release_stage siri-remote-component-pkgbuild "$RELEASE_PKGBUILD_TIMEOUT_SECONDS" \
+    /usr/bin/pkgbuild \
+    --root "$SIRI_REMOTE_PAYLOAD_ROOT" \
+    --scripts "$SIRI_REMOTE_INSTALL_SCRIPTS" \
+    --identifier "com.hd838a.RemoteMic.siri-remote" \
+    --version "$VERSION" \
+    --install-location / \
+    --ownership recommended \
+    "$SIRI_REMOTE_COMPONENT_PACKAGE"
+fi
 
 run_release_stage installer-productbuild "$RELEASE_PRODUCTBUILD_TIMEOUT_SECONDS" \
   /usr/bin/productbuild \

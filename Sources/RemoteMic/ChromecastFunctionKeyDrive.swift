@@ -46,12 +46,17 @@ struct ChromecastFunctionKeyDrive: Equatable {
     /// - 工具支持长按：跟随遥控器的语音模式——「按一次说话」用成对点按（与豆包「免按模式」同构），
     ///   「按住说话」用按住—松开（与豆包「长按模式」同构）。
     ///
-    /// 注意：这里**不再读**「语音键模拟 Fn 点按」开关。那个开关是为「只会按住收音」的遥控器准备的
-    /// （界面也只在那些遥控器上显示），Chromecast 自己就能按一次收音，不需要它。
+    /// `forceTapConversion` comes from the staged onboarding pairing plan. It
+    /// matters for the public Chromecast adapter: that adapter exposes only the
+    /// physical hold-to-talk stream, while a toggle-only target tool still needs
+    /// one Fn tap at each edge. Private adapters that expose a native toggle
+    /// gesture leave this false and continue to follow `voiceMode`.
     static func resolve(
         voiceMode: ChromecastVoiceMode,
-        toolSupportsHoldVoiceRecording: Bool
+        toolSupportsHoldVoiceRecording: Bool,
+        forceTapConversion: Bool = false
     ) -> ChromecastFunctionKeyDrive {
+        if forceTapConversion { return .taps }
         guard toolSupportsHoldVoiceRecording else { return .taps }
         return voiceMode == .toggle ? .taps : .hold
     }

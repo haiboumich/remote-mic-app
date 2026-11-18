@@ -495,6 +495,27 @@ enum OnboardingSecureInputPolicy {
     }
 }
 
+/// Selects the first-use evidence that a control source can actually provide.
+/// Public Chromecast builds expose ATVV voice events but no ordinary HID edges,
+/// so requiring a direction/select key would make onboarding impossible.
+enum OnboardingRemoteEvidencePolicy {
+    static func requiresOrdinaryButtonObservation(
+        for source: OnboardingControlSource
+    ) -> Bool {
+        source != .chromecastRemote || ChromecastFeatureIntegration.supportsOrdinaryControlEdges
+    }
+
+    static func isSatisfied(
+        source: OnboardingControlSource,
+        ordinaryButtonObserved: Bool,
+        voiceButtonObserved: Bool
+    ) -> Bool {
+        requiresOrdinaryButtonObservation(for: source)
+            ? ordinaryButtonObserved
+            : voiceButtonObserved
+    }
+}
+
 enum OnboardingPermissionRefreshPolicy {
     /// 引导页的周期权限查询间隔（秒）。
     ///
@@ -557,13 +578,13 @@ enum OnboardingBuildCapabilities {
     }
 }
 
-/// Onboarding may hide a source while keeping its runtime implementation and
-/// persisted compatibility values available to the rest of the app.
+/// Onboarding shows every control source that the current build can actually
+/// exercise. Build capability filtering happens before this presentation step.
 enum OnboardingControlSourceVisibilityPolicy {
     static func visibleSources(
         _ sources: [OnboardingControlSource]
     ) -> [OnboardingControlSource] {
-        sources.filter { $0 != .chromecastRemote }
+        sources
     }
 }
 
@@ -651,7 +672,16 @@ struct OnboardingVoicePairingPlan: Equatable {
             result.append(mode)
         }
         append(preferredGesture)
-        if controlSource == .chromecastRemote { append(.toggle) }
+        // A Chromecast adapter that actually exposes a toggle gesture may keep
+        // the product's toggle-first default. The public/offline adapter is
+        // hold-only: for a hold-capable tool such as WeType, prefer that tool's
+        // native hold mode instead of needlessly translating hold into two Fn
+        // taps. Toggle-only tools still reach `.toggle` through their own
+        // recommended mode below.
+        if controlSource == .chromecastRemote,
+           ChromecastFeatureIntegration.supportsToggleVoiceGesture {
+            append(.toggle)
+        }
         if controlSource == .xiaomiRemote || controlSource == .siriRemote { append(.hold) }
         append(profile.recommendedMode)
         append(.toggle)
@@ -777,6 +807,7 @@ struct OnboardingCapabilities: Equatable {
     var accessibilityGranted = false
     var remoteConnected = false
     var remoteButtonObserved = false
+    var remoteVoiceButtonObserved = false
     var audioReady = false
     var audioOutputSelected = false
     var voiceSessionStarted = false
@@ -913,7 +944,11 @@ enum OnboardingFlowPolicy {
                     capabilities.inputMonitoringGranted) &&
                 capabilities.accessibilityGranted
         case .remote:
-            return capabilities.remoteConnected && capabilities.remoteButtonObserved
+            return capabilities.remoteConnected && OnboardingRemoteEvidencePolicy.isSatisfied(
+                source: controlSource,
+                ordinaryButtonObserved: capabilities.remoteButtonObserved,
+                voiceButtonObserved: capabilities.remoteVoiceButtonObserved
+            )
         case .audio:
             return OnboardingAudioReadinessPolicy.isSatisfied(
                 controlMethod: controlMethod,
@@ -928,7 +963,9 @@ enum OnboardingFlowPolicy {
                 capabilities.transcriptionAppeared &&
                 !capabilities.manualTranscriptInputObserved
         case .controls:
-            return capabilities.testedRemoteButtonCount >= 3
+            return !OnboardingRemoteEvidencePolicy.requiresOrdinaryButtonObservation(
+                for: controlSource
+            ) || capabilities.testedRemoteButtonCount >= 3
         case .complete:
             return isControlSelectionValid(
                 remoteAvailability: remoteAvailability,

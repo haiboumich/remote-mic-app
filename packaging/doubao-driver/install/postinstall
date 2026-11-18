@@ -19,6 +19,8 @@ SPARKLE_VERSION_DIR="$APP_DESTINATION/Contents/Frameworks/Sparkle.framework/Vers
 APP_EXECUTABLES=(
   "$APP_BINARY"
   "$MCP_HELPER"
+)
+OPTIONAL_APP_EXECUTABLES=(
   "$APPLE_REMOTE_AUDIO_HELPER"
   "$APPLE_REMOTE_HCI_BUNDLED_HELPER"
   "$SPARKLE_VERSION_DIR/Sparkle"
@@ -27,6 +29,11 @@ APP_EXECUTABLES=(
   "$SPARKLE_VERSION_DIR/XPCServices/Installer.xpc/Contents/MacOS/Installer"
   "$SPARKLE_VERSION_DIR/XPCServices/Downloader.xpc/Contents/MacOS/Downloader"
 )
+for optional_app_executable in "${OPTIONAL_APP_EXECUTABLES[@]}"; do
+  if [[ -f "$optional_app_executable" ]]; then
+    APP_EXECUTABLES+=("$optional_app_executable")
+  fi
+done
 LEGACY_REMOTE_MIC_APP_DESTINATION="${TARGET_VOLUME%/}/Applications/Remote Mic.app"
 LEGACY_REMOTE_MIC_APP_PLIST="$LEGACY_REMOTE_MIC_APP_DESTINATION/Contents/Info.plist"
 LEGACY_CHINESE_APP_DESTINATION="${TARGET_VOLUME%/}/Applications/无线麦.app"

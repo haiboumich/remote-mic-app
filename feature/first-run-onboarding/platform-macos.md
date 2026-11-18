@@ -6,7 +6,7 @@
 
 | 产品能力 | macOS 实现 |
 | --- | --- |
-| 主控制来源 | 小米蓝牙遥控器 2 / 2 Pro；私有 Package 存在时增加苹果遥控器第 6 / 7 代与 Chromecast 语音遥控器 |
+| 主控制来源 | 小米蓝牙遥控器 2 / 2 Pro；`offline-only` 公开构建同时提供 Chromecast 语音遥控器；私有 Package 存在时增加苹果遥控器第 6 / 7 代 |
 | 替代控制来源 | 仅 `SAYALL_MAC_REMOTE_ENABLED` 构建显示 iPhone / Apple Watch App 与手机网页版 |
 | 必要权限 | 蓝牙、输入监控、辅助功能；具体分支仍以生产能力要求为准 |
 | 语音工具 | 豆包输入法、微信输入法、Vokie、Typeless、其他支持语音输入的工具 |
@@ -65,8 +65,9 @@
 
 ### 控制来源
 
-- 控制来源在欢迎页后的单页中按 Package 门禁显示：公开构建只有小米遥控器；Apple Package 且存在 `com.hd838a.RemoteMic.siri-remote` Installer 收据时增加苹果遥控器第 6 / 7 代两个入口，Chromecast 和 Mac Remote Package 分别增加对应入口。
-- 小米与两代苹果遥控器显著展示；Chromecast、iPhone / Apple Watch 和 Web 收入默认折叠的“更多控制方式”。实体卡片和右栏使用所选设备真实图片。
+- 控制来源在欢迎页后的单页中按构建能力显示：`offline-only` 公开构建提供小米遥控器和公开、仅本地的 Chromecast 语音适配器；Apple Package 且存在 `com.hd838a.RemoteMic.siri-remote` Installer 收据时增加苹果遥控器第 6 / 7 代两个入口，Mac Remote Package 增加对应入口。
+- 小米、Chromecast 与两代苹果遥控器作为实体遥控器显著展示；iPhone / Apple Watch 和 Web 收入默认折叠的“更多控制方式”。实体卡片和右栏使用所选设备真实图片。
+- 公开适配器的 Chromecast 只有按住说话能力。与支持原生 Fn 按住的微信输入法配对时必须保持 `hold + Fn`，不得开启 Fn 点按转换；只有控制来源不支持目标工具的 toggle 语义时，才允许使用既有的按住转点按桥接。
 - 苹果遥控器配对说明不得使用 “Siri Remote” 用户文案，并提示蓝牙名称可能不同，应关注重置后新出现的设备。
 - iPhone、Apple Watch 和 Web App 均支持 hold/toggle；旧版未上报实际模式时按 hold 兼容并要求用户确认。
 - 实体遥控器必须由生产 BLE/HID 证据确认，macOS 系统蓝牙列表中的“已连接”不能单独通过。
@@ -89,7 +90,8 @@
 - 主设置“连接”页只保留主要音频设备、增益、状态和刷新操作，不显示豆包兼容专用卡片、BlackHole 获取入口或测试音按钮。
 - 用户可见文案必须遵守 [`PRODUCT_SPEC.md`](PRODUCT_SPEC.md) 的“用户可见文案必须使用产品语言”不变量；平台实现不得把研发、测试或内部验收状态引入页面。
 - macOS 页面或流程变化必须按 [`design-qa.md`](../../design-qa.md) 和 [`Testing/FirstRunOnboarding.md`](../../Testing/FirstRunOnboarding.md) 完成检查。
-- Onboarding 控制来源页隐藏 Chromecast 卡片，但保留 Chromecast 运行时和兼容代码。右栏内容在正常窗口高度内垂直居中；控制来源页允许滚动但不显示滚动指示器。微信小程序连接页在尚未生成二维码时显示“下一步生成二维码”。
+- Onboarding 控制来源页在当前构建包含 Chromecast 适配器时显示对应实体卡片；公开适配器只提供已验证的按住说话语义。右栏内容在正常窗口高度内垂直居中；控制来源页允许滚动但不显示滚动指示器。微信小程序连接页在尚未生成二维码时显示“下一步生成二维码”。
+- 主设置“按键映射”页必须按当前型号显示真实设备图：Chromecast 使用 `Chromecast-remote-photo.png`，不得回退到 RC003 图片；未识别型号仍显示缺图占位，不得冒充已知设备。
 
 ## 实现与测试入口
 

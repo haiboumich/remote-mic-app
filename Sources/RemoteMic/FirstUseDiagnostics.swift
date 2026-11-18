@@ -404,7 +404,11 @@ struct FirstUseDiagnosticContext: Equatable {
             if !capabilities.accessibilityGranted { return .accessibilityPermissionDenied }
         case .remote:
             if !capabilities.remoteConnected { return .remoteNotFound }
-            if !capabilities.remoteButtonObserved { return .remoteButtonNotReady }
+            if !OnboardingRemoteEvidencePolicy.isSatisfied(
+                source: controlSource,
+                ordinaryButtonObserved: capabilities.remoteButtonObserved,
+                voiceButtonObserved: capabilities.remoteVoiceButtonObserved
+            ) { return .remoteButtonNotReady }
         case .audio:
             if !hasSelectedAudioUID { return .audioNoOutputDevice }
             if !capabilities.audioOutputSelected { return .audioSelectedDeviceMissing }
@@ -427,7 +431,9 @@ struct FirstUseDiagnosticContext: Equatable {
             if capabilities.manualTranscriptInputObserved { return .voiceManualInput }
             if !capabilities.transcriptionAppeared { return .voiceNoTranscript }
         case .controls:
-            if capabilities.testedRemoteButtonCount < 3 { return .controlsNotConfirmed }
+            if OnboardingRemoteEvidencePolicy.requiresOrdinaryButtonObservation(
+                for: controlSource
+            ), capabilities.testedRemoteButtonCount < 3 { return .controlsNotConfirmed }
         case .complete:
             guard OnboardingFlowPolicy.canContinue(
                 from: .complete,

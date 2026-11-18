@@ -83,17 +83,22 @@ case "$MODE" in
     DISTRIBUTION="$EXPANDED/Distribution"
     COMPONENT_PACKAGE="$EXPANDED/RemoteMicComponent.pkg"
     SIRI_REMOTE_COMPONENT_PACKAGE="$EXPANDED/SiriRemoteComponent.pkg"
+    HAS_SIRI_REMOTE_COMPONENT=0
+    if [[ -d "$SIRI_REMOTE_COMPONENT_PACKAGE" ]]; then
+      HAS_SIRI_REMOTE_COMPONENT=1
+    fi
     test -f "$DISTRIBUTION"
     test -d "$COMPONENT_PACKAGE"
-    test -d "$SIRI_REMOTE_COMPONENT_PACKAGE"
     COMPONENT_SIGNATURE_DETAILS="$(/usr/sbin/pkgutil --check-signature \
       "$COMPONENT_PACKAGE" 2>&1 || true)"
     print -r -- "$COMPONENT_SIGNATURE_DETAILS" | \
       /usr/bin/grep -Fq 'Status: no signature'
-    SIRI_REMOTE_COMPONENT_SIGNATURE_DETAILS="$(/usr/sbin/pkgutil --check-signature \
-      "$SIRI_REMOTE_COMPONENT_PACKAGE" 2>&1 || true)"
-    print -r -- "$SIRI_REMOTE_COMPONENT_SIGNATURE_DETAILS" | \
-      /usr/bin/grep -Fq 'Status: no signature'
+    if [[ "$HAS_SIRI_REMOTE_COMPONENT" -eq 1 ]]; then
+      SIRI_REMOTE_COMPONENT_SIGNATURE_DETAILS="$(/usr/sbin/pkgutil --check-signature \
+        "$SIRI_REMOTE_COMPONENT_PACKAGE" 2>&1 || true)"
+      print -r -- "$SIRI_REMOTE_COMPONENT_SIGNATURE_DETAILS" | \
+        /usr/bin/grep -Fq 'Status: no signature'
+    fi
     test -f "$EXPANDED/Resources/en.lproj/Localizable.strings"
     test -f "$EXPANDED/Resources/zh-Hans.lproj/Localizable.strings"
     /usr/bin/xmllint --noout "$DISTRIBUTION"
@@ -109,16 +114,25 @@ case "$MODE" in
     /usr/bin/grep -Fq 'my.result.message = system.localizedString' "$DISTRIBUTION"
     /usr/bin/grep -Fq '<installation-check script="installationCheck()"/>' "$DISTRIBUTION"
     /usr/bin/grep -Fq 'RemoteMicComponent.pkg</pkg-ref>' "$DISTRIBUTION"
-    /usr/bin/grep -Fq 'SiriRemoteComponent.pkg</pkg-ref>' "$DISTRIBUTION"
-    /usr/bin/grep -Fq '<options customize="always"' "$DISTRIBUTION"
-    /usr/bin/grep -Fq 'id="siri-remote"' "$DISTRIBUTION"
-    /usr/bin/grep -Fq 'function siriRemoteSupportWasPreviouslyInstalled()' "$DISTRIBUTION"
-    /usr/bin/grep -Fq "my.target.receiptForIdentifier('com.hd838a.RemoteMic.siri-remote')" "$DISTRIBUTION"
-    if /usr/bin/grep -Eq 'system\.files\.|allow-external-scripts="true"' "$DISTRIBUTION"; then
-      print -u2 "Siri Remote detection must use Installer receipts without external-script access"
-      exit 1
+    if [[ "$HAS_SIRI_REMOTE_COMPONENT" -eq 1 ]]; then
+      /usr/bin/grep -Fq 'SiriRemoteComponent.pkg</pkg-ref>' "$DISTRIBUTION"
+      /usr/bin/grep -Fq '<options customize="always"' "$DISTRIBUTION"
+      /usr/bin/grep -Fq 'id="siri-remote"' "$DISTRIBUTION"
+      /usr/bin/grep -Fq 'function siriRemoteSupportWasPreviouslyInstalled()' "$DISTRIBUTION"
+      /usr/bin/grep -Fq "my.target.receiptForIdentifier('com.hd838a.RemoteMic.siri-remote')" "$DISTRIBUTION"
+      if /usr/bin/grep -Eq 'system\.files\.|allow-external-scripts="true"' "$DISTRIBUTION"; then
+        print -u2 "Siri Remote detection must use Installer receipts without external-script access"
+        exit 1
+      fi
+      /usr/bin/grep -Fq 'start_selected="siriRemoteSupportWasPreviouslyInstalled()"' "$DISTRIBUTION"
+    else
+      /usr/bin/grep -Fq '<options customize="never"' "$DISTRIBUTION"
+      if /usr/bin/grep -Eq 'SiriRemoteComponent|siri-remote|com\.hd838a\.RemoteMic\.siri-remote' \
+          "$DISTRIBUTION"; then
+        print -u2 "public Installer distribution unexpectedly includes Siri Remote"
+        exit 1
+      fi
     fi
-    /usr/bin/grep -Fq 'start_selected="siriRemoteSupportWasPreviouslyInstalled()"' "$DISTRIBUTION"
     case "$RELEASE_VARIANT" in
       apple-silicon)
         WRONG_ARCHITECTURE_KEY="wrong_architecture_apple_silicon"
@@ -157,14 +171,19 @@ case "$MODE" in
       /usr/sbin/installer -showChoicesXML -pkg "$PACKAGE" -target / \
         > "$INSTALLER_CHOICES" 2> "$INSTALLER_ERROR"
       /usr/bin/grep -Fq '<string>remote-mic</string>' "$INSTALLER_CHOICES"
-      EXPECTED_SIRI_REMOTE_SELECTION=0
-      if /usr/sbin/pkgutil --volume / --pkg-info com.hd838a.RemoteMic.siri-remote >/dev/null 2>&1; then
-        EXPECTED_SIRI_REMOTE_SELECTION=1
+      if [[ "$HAS_SIRI_REMOTE_COMPONENT" -eq 1 ]]; then
+        EXPECTED_SIRI_REMOTE_SELECTION=0
+        if /usr/sbin/pkgutil --volume / --pkg-info com.hd838a.RemoteMic.siri-remote >/dev/null 2>&1; then
+          EXPECTED_SIRI_REMOTE_SELECTION=1
+        fi
+        test "$(/usr/bin/plutil -extract 0.childItems.1.choiceIdentifier raw -o - \
+          "$INSTALLER_CHOICES")" = "siri-remote"
+        test "$(/usr/bin/plutil -extract 0.childItems.1.choiceIsSelected raw -o - \
+          "$INSTALLER_CHOICES")" = "$EXPECTED_SIRI_REMOTE_SELECTION"
+      elif /usr/bin/grep -Fq '<string>siri-remote</string>' "$INSTALLER_CHOICES"; then
+        print -u2 "public Installer choices unexpectedly include Siri Remote"
+        exit 1
       fi
-      test "$(/usr/bin/plutil -extract 0.childItems.1.choiceIdentifier raw -o - \
-        "$INSTALLER_CHOICES")" = "siri-remote"
-      test "$(/usr/bin/plutil -extract 0.childItems.1.choiceIsSelected raw -o - \
-        "$INSTALLER_CHOICES")" = "$EXPECTED_SIRI_REMOTE_SELECTION"
     else
       if /usr/sbin/installer -showChoicesXML -pkg "$PACKAGE" -target / \
           > "$INSTALLER_CHOICES" 2> "$INSTALLER_ERROR"; then
@@ -307,27 +326,29 @@ case "$MODE" in
     fi
     /usr/bin/grep -Fq '/bin/launchctl asuser "$CONSOLE_UID"' "$SCRIPTS_DIR/postinstall"
     /usr/bin/grep -Fq '/usr/bin/sudo -u "$CONSOLE_USER" /usr/bin/open "$APP_DESTINATION"' "$SCRIPTS_DIR/postinstall"
-    SIRI_PACKAGE_INFO="$SIRI_REMOTE_COMPONENT_PACKAGE/PackageInfo"
-    SIRI_SCRIPTS_DIR="$SIRI_REMOTE_COMPONENT_PACKAGE/Scripts"
-    SIRI_PAYLOAD_FILES="$WORK_DIR/siri-payload-files"
-    test -f "$SIRI_PACKAGE_INFO"
-    /usr/bin/grep -Fq 'identifier="com.hd838a.RemoteMic.siri-remote"' "$SIRI_PACKAGE_INFO"
-    /usr/bin/grep -Fq '<payload ' "$SIRI_PACKAGE_INFO"
-    /usr/bin/lsbom -s "$SIRI_REMOTE_COMPONENT_PACKAGE/Bom" > "$SIRI_PAYLOAD_FILES"
-    /usr/bin/grep -qx './Library/LaunchDaemons/com.hd838a.SayAll.AppleRemoteHCIService.plist' "$SIRI_PAYLOAD_FILES"
-    /usr/bin/grep -qx './Library/PrivilegedHelperTools/com.hd838a.SayAll.AppleRemoteHCIService' "$SIRI_PAYLOAD_FILES"
-    test -x "$SIRI_SCRIPTS_DIR/preinstall"
-    test -x "$SIRI_SCRIPTS_DIR/postinstall"
-    test -f "$SIRI_SCRIPTS_DIR/release-variant.plist"
-    /bin/zsh -n "$SIRI_SCRIPTS_DIR/preinstall" "$SIRI_SCRIPTS_DIR/postinstall"
-    /usr/bin/grep -Fq 'launchctl bootstrap system' "$SIRI_SCRIPTS_DIR/postinstall"
-    /usr/bin/grep -Fq 'launchctl bootout' "$SIRI_SCRIPTS_DIR/preinstall" "$SIRI_SCRIPTS_DIR/postinstall"
-    /usr/bin/grep -Fq -- '--restore' "$SIRI_SCRIPTS_DIR/preinstall" "$SIRI_SCRIPTS_DIR/postinstall"
-    /usr/bin/grep -Fq 'com.hd838a.SayAll.AppleRemoteHCIService' "$SIRI_SCRIPTS_DIR/preinstall" "$SIRI_SCRIPTS_DIR/postinstall"
-    /usr/bin/grep -Fq '/usr/bin/codesign --verify --strict "$HCI_SERVICE_DESTINATION"' "$SIRI_SCRIPTS_DIR/postinstall"
-    /usr/bin/grep -Fq 'PlistBuddy -c "Print :MachServices:$HCI_SERVICE_LABEL"' "$SIRI_SCRIPTS_DIR/postinstall"
-    /usr/bin/grep -Fq 'plutil -extract ProgramArguments.0 raw' "$SIRI_SCRIPTS_DIR/postinstall"
-    /usr/bin/grep -Fq '/usr/sbin/sysctl -in hw.optional.arm64' "$SIRI_SCRIPTS_DIR/preinstall" "$SIRI_SCRIPTS_DIR/postinstall"
+    if [[ "$HAS_SIRI_REMOTE_COMPONENT" -eq 1 ]]; then
+      SIRI_PACKAGE_INFO="$SIRI_REMOTE_COMPONENT_PACKAGE/PackageInfo"
+      SIRI_SCRIPTS_DIR="$SIRI_REMOTE_COMPONENT_PACKAGE/Scripts"
+      SIRI_PAYLOAD_FILES="$WORK_DIR/siri-payload-files"
+      test -f "$SIRI_PACKAGE_INFO"
+      /usr/bin/grep -Fq 'identifier="com.hd838a.RemoteMic.siri-remote"' "$SIRI_PACKAGE_INFO"
+      /usr/bin/grep -Fq '<payload ' "$SIRI_PACKAGE_INFO"
+      /usr/bin/lsbom -s "$SIRI_REMOTE_COMPONENT_PACKAGE/Bom" > "$SIRI_PAYLOAD_FILES"
+      /usr/bin/grep -qx './Library/LaunchDaemons/com.hd838a.SayAll.AppleRemoteHCIService.plist' "$SIRI_PAYLOAD_FILES"
+      /usr/bin/grep -qx './Library/PrivilegedHelperTools/com.hd838a.SayAll.AppleRemoteHCIService' "$SIRI_PAYLOAD_FILES"
+      test -x "$SIRI_SCRIPTS_DIR/preinstall"
+      test -x "$SIRI_SCRIPTS_DIR/postinstall"
+      test -f "$SIRI_SCRIPTS_DIR/release-variant.plist"
+      /bin/zsh -n "$SIRI_SCRIPTS_DIR/preinstall" "$SIRI_SCRIPTS_DIR/postinstall"
+      /usr/bin/grep -Fq 'launchctl bootstrap system' "$SIRI_SCRIPTS_DIR/postinstall"
+      /usr/bin/grep -Fq 'launchctl bootout' "$SIRI_SCRIPTS_DIR/preinstall" "$SIRI_SCRIPTS_DIR/postinstall"
+      /usr/bin/grep -Fq -- '--restore' "$SIRI_SCRIPTS_DIR/preinstall" "$SIRI_SCRIPTS_DIR/postinstall"
+      /usr/bin/grep -Fq 'com.hd838a.SayAll.AppleRemoteHCIService' "$SIRI_SCRIPTS_DIR/preinstall" "$SIRI_SCRIPTS_DIR/postinstall"
+      /usr/bin/grep -Fq '/usr/bin/codesign --verify --strict "$HCI_SERVICE_DESTINATION"' "$SIRI_SCRIPTS_DIR/postinstall"
+      /usr/bin/grep -Fq 'PlistBuddy -c "Print :MachServices:$HCI_SERVICE_LABEL"' "$SIRI_SCRIPTS_DIR/postinstall"
+      /usr/bin/grep -Fq 'plutil -extract ProgramArguments.0 raw' "$SIRI_SCRIPTS_DIR/postinstall"
+      /usr/bin/grep -Fq '/usr/sbin/sysctl -in hw.optional.arm64' "$SIRI_SCRIPTS_DIR/preinstall" "$SIRI_SCRIPTS_DIR/postinstall"
+    fi
     /usr/sbin/pkgutil --expand-full "$PACKAGE" "$FULL_EXPANDED"
     PAYLOAD_APP="$(/usr/bin/find "$FULL_EXPANDED" -type d -path '*/Applications/SayAll.app' -print -quit)"
     PAYLOAD_DRIVER="$(/usr/bin/find "$FULL_EXPANDED" -type d -path '*/Library/Application Support/RemoteMic/Installer/MiRemoteV2ch.driver' -print -quit)"
@@ -338,31 +359,43 @@ case "$MODE" in
     PAYLOAD_HCI_PLIST="$(/usr/bin/find "$FULL_EXPANDED" -type f -path '*/Library/LaunchDaemons/com.hd838a.SayAll.AppleRemoteHCIService.plist' -print -quit)"
     test -n "$PAYLOAD_APP"
     test -n "$PAYLOAD_DRIVER"
-    test -n "$PAYLOAD_HCI_SERVICE"
-    test -n "$PAYLOAD_HCI_PLIST"
+    PAYLOAD_SIRI_REMOTE_INCLUDED="$(/usr/bin/plutil -extract SayAllSiriRemoteIncluded raw -o - \
+      "$PAYLOAD_APP/Contents/Info.plist" 2>/dev/null || true)"
+    if [[ "$HAS_SIRI_REMOTE_COMPONENT" -eq 1 ]]; then
+      test "$PAYLOAD_SIRI_REMOTE_INCLUDED" = "true"
+      test -n "$PAYLOAD_HCI_SERVICE"
+      test -n "$PAYLOAD_HCI_PLIST"
+    else
+      test "$PAYLOAD_SIRI_REMOTE_INCLUDED" = "false"
+      test -z "$PAYLOAD_HCI_SERVICE"
+      test -z "$PAYLOAD_HCI_PLIST"
+    fi
     test "$(/usr/bin/lipo -archs "$PAYLOAD_APP/Contents/MacOS/RemoteMic")" = "$RELEASE_ARCH"
     test "$(/usr/bin/lipo -archs "$PAYLOAD_DRIVER/Contents/MacOS/MiRemoteV2ch")" = "$RELEASE_ARCH"
-    test "$(/usr/bin/lipo -archs "$PAYLOAD_HCI_SERVICE")" = "$RELEASE_ARCH"
-    /usr/bin/codesign --verify --strict "$PAYLOAD_HCI_SERVICE"
-    test "$(/usr/bin/codesign -dvv "$PAYLOAD_HCI_SERVICE" 2>&1 | \
-      /usr/bin/sed -n 's/^Identifier=//p')" = "com.hd838a.SayAll.AppleRemoteHCIService"
-    test "$(/usr/bin/plutil -extract Label raw -o - "$PAYLOAD_HCI_PLIST")" = \
-      "com.hd838a.SayAll.AppleRemoteHCIService"
-    test "$(/usr/libexec/PlistBuddy -c \
-      'Print :MachServices:com.hd838a.SayAll.AppleRemoteHCIService' \
-      "$PAYLOAD_HCI_PLIST")" = "true"
-    test "$(/usr/bin/plutil -extract ProgramArguments.0 raw -o - "$PAYLOAD_HCI_PLIST")" = \
-      "/Library/PrivilegedHelperTools/com.hd838a.SayAll.AppleRemoteHCIService"
-    test "$(/usr/bin/plutil -extract ProgramArguments raw -o - "$PAYLOAD_HCI_PLIST" | \
-      /usr/bin/plutil -convert xml1 -o - -- - | /usr/bin/grep -c '<string>')" = "1"
-    HCI_MINIMUM_SYSTEM="$(/usr/bin/otool -l "$PAYLOAD_HCI_SERVICE" | \
-      /usr/bin/awk '/LC_BUILD_VERSION/{seen=1; next} seen && /minos/{print $2; exit}')"
-    autoload -Uz is-at-least
-    if [[ -z "$HCI_MINIMUM_SYSTEM" ]] || \
-       ! is-at-least "$HCI_MINIMUM_SYSTEM" "$RELEASE_MIN_SYSTEM_VERSION"; then
-      print -u2 "packaged Apple Remote HCI service requires a newer macOS than the app release floor"
-      exit 1
+    if [[ "$HAS_SIRI_REMOTE_COMPONENT" -eq 1 ]]; then
+      test "$(/usr/bin/lipo -archs "$PAYLOAD_HCI_SERVICE")" = "$RELEASE_ARCH"
+      /usr/bin/codesign --verify --strict "$PAYLOAD_HCI_SERVICE"
+      test "$(/usr/bin/codesign -dvv "$PAYLOAD_HCI_SERVICE" 2>&1 | \
+        /usr/bin/sed -n 's/^Identifier=//p')" = "com.hd838a.SayAll.AppleRemoteHCIService"
+      test "$(/usr/bin/plutil -extract Label raw -o - "$PAYLOAD_HCI_PLIST")" = \
+        "com.hd838a.SayAll.AppleRemoteHCIService"
+      test "$(/usr/libexec/PlistBuddy -c \
+        'Print :MachServices:com.hd838a.SayAll.AppleRemoteHCIService' \
+        "$PAYLOAD_HCI_PLIST")" = "true"
+      test "$(/usr/bin/plutil -extract ProgramArguments.0 raw -o - "$PAYLOAD_HCI_PLIST")" = \
+        "/Library/PrivilegedHelperTools/com.hd838a.SayAll.AppleRemoteHCIService"
+      test "$(/usr/bin/plutil -extract ProgramArguments raw -o - "$PAYLOAD_HCI_PLIST" | \
+        /usr/bin/plutil -convert xml1 -o - -- - | /usr/bin/grep -c '<string>')" = "1"
+      HCI_MINIMUM_SYSTEM="$(/usr/bin/otool -l "$PAYLOAD_HCI_SERVICE" | \
+        /usr/bin/awk '/LC_BUILD_VERSION/{seen=1; next} seen && /minos/{print $2; exit}')"
+      autoload -Uz is-at-least
+      if [[ -z "$HCI_MINIMUM_SYSTEM" ]] || \
+         ! is-at-least "$HCI_MINIMUM_SYSTEM" "$RELEASE_MIN_SYSTEM_VERSION"; then
+        print -u2 "packaged Apple Remote HCI service requires a newer macOS than the app release floor"
+        exit 1
+      fi
     fi
+    "$ROOT/scripts/verify-app.sh" "$PAYLOAD_APP"
     test "$(/usr/bin/plutil -extract LSMinimumSystemVersion raw -o - \
       "$PAYLOAD_APP/Contents/Info.plist")" = "$RELEASE_MIN_SYSTEM_VERSION"
     test "$(/usr/bin/plutil -extract SUFeedURL raw -o - \

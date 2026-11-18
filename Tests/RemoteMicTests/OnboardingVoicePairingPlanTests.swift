@@ -133,6 +133,16 @@ struct OnboardingVoicePairingPlanTests {
         #expect(typeless.binding.shortcut == .function)
         #expect(typeless.fnTapModeEnabled == !canToggle)
         #expect(typeless.chromecastVoiceMode == (canToggle ? .toggle : .hold))
+
+        let weixin = try #require(OnboardingVoicePairingPlan.resolve(
+            tool: .weixin,
+            controlSource: .chromecastRemote,
+            forceFunctionKey: true
+        ))
+        #expect(weixin.binding.gestureMode == (canToggle ? .toggle : .hold))
+        #expect(weixin.binding.shortcut == .function)
+        #expect(!weixin.fnTapModeEnabled)
+        #expect(weixin.chromecastVoiceMode == (canToggle ? .toggle : .hold))
     }
 
     @Test func appleAndWebExposeHoldAndToggle() {

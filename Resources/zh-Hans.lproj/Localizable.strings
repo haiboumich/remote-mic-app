@@ -971,6 +971,10 @@
 "onboarding.remote.button_detail" = "语音键以外的任意普通按键都可以。";
 "onboarding.remote.voice_button_mistake.title" = "刚才按的是语音键";
 "onboarding.remote.voice_button_mistake.detail" = "这一步检查普通控制键。请改为短按圆盘中间的确定键或任意方向键。";
+"onboarding.remote.voice_only.waiting" = "等待语音键";
+"onboarding.remote.voice_only.waiting_detail" = "请按住 Chromecast 遥控器上的语音/Assistant 键；当前公开适配器不会接管方向键或确认键。";
+"onboarding.remote.voice_only.received" = "已收到语音键";
+"onboarding.remote.voice_only.received_detail" = "Chromecast 语音链路已经响应，可以继续配置音频输出。";
 "onboarding.remote.reconnect" = "重新查找";
 "onboarding.remote.retry_input" = "重新检测按键";
 "onboarding.remote.open_bluetooth" = "打开蓝牙设置";
@@ -1038,6 +1042,8 @@
 "onboarding.controls.mobile_slot" = "第 %@ 个不同控制";
 "onboarding.controls.waiting" = "继续按下不同的按键";
 "onboarding.controls.ready" = "常用按键已经可以使用";
+"onboarding.controls.voice_only.title" = "当前版本仅使用语音键";
+"onboarding.controls.voice_only.detail" = "公开离线适配器支持 Chromecast 语音流，不接管方向、确认、返回等普通按键；这些按键仍由 macOS 按原行为处理。";
 "onboarding.secure_input.title" = "系统安全输入可能影响遥控器按键";
 "onboarding.secure_input.detail" = "请退出正在输入密码或使用安全键盘输入的应用，然后重新检测。";
 "onboarding.secure_input.recheck" = "重新检测";
@@ -1154,6 +1160,7 @@
 "onboarding.side.web_connected" = "小程序已连接";
 "onboarding.side.control_selected" = "控制方式已选择";
 "onboarding.side.button_received" = "控制按键已收到";
+"onboarding.side.voice_button_received" = "语音键已收到";
 "onboarding.side.device_found" = "支持的虚拟音频设备已检测";
 "onboarding.side.device_selected" = "虚拟音频设备已选中";
 "onboarding.side.audio_ready" = "音频输出正常";
@@ -1163,6 +1170,7 @@
 "onboarding.side.transcript" = "文字已经出现";
 "onboarding.side.three_buttons" = "常用按键已体验";
 "onboarding.side.mapping_enabled" = "自定义按键已启用";
+"onboarding.side.voice_only" = "语音键模式";
 "onboarding.diagnostics.copy" = "复制设置诊断";
 "onboarding.recovery.permission.bluetooth_denied.title" = "还需要蓝牙权限";
 "onboarding.recovery.permission.bluetooth_denied.detail" = "允许蓝牙访问后，无线麦 SayAll 才能找到已经配对的遥控器。";

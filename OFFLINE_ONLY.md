@@ -48,6 +48,8 @@ offline-only 允许范围。
 
 - offline-only 仅使用公开、可审计的依赖；构建必须采用
   `SAYALL_PRIVATE_PLATFORM_MODE=public`，不接入私有会员、诊断或远程组件。
+- 全新 Mac 的完整 Xcode、构建命令、产物位置、目标机安装与必须人工完成的权限/真机
+  步骤见 [`BUILD_PREREQUISITES.md`](BUILD_PREREQUISITES.md)。
 - 所有 SwiftPM 命令继续带 `--disable-keychain`。
 - 每次涉及联网、权限、Helper 或打包的改动，都必须同时做静态调用点审计和离线运行
   验证：断开互联网后 App 应可启动、连接遥控器并完成核心语音会话，且不得尝试 DNS、

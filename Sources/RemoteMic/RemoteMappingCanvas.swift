@@ -396,22 +396,35 @@ struct RemoteMappingCanvas: View {
     }
 }
 
-private enum MappingRemoteImageResource {
+enum MappingRemoteImageResource {
     private static let images: [String: NSImage] = {
         var images: [String: NSImage] = [:]
-        for entry in VoiceRemoteCatalog.entries {
+        let resourceNames = VoiceRemoteCatalog.entries.map(\.photoResource)
+            + ["Chromecast-remote-photo"]
+        for resourceName in resourceNames {
             guard let url = RemoteMicResourceBundle.mainOrDevelopment.url(
-                forResource: entry.photoResource,
+                forResource: resourceName,
                 withExtension: "png"
             ), let image = NSImage(contentsOf: url) else { continue }
-            images[entry.photoResource] = image
+            images[resourceName] = image
         }
         return images
     }()
 
+    static func resourceName(for model: XiaomiRemoteModel?) -> String? {
+        switch model {
+        case .chromecastVoiceRemote:
+            return "Chromecast-remote-photo"
+        case nil:
+            return VoiceRemoteCatalog.photoResource(for: .rc003)
+                ?? "RC003-remote-photo"
+        case .some(let model):
+            return VoiceRemoteCatalog.photoResource(for: model)
+        }
+    }
+
     static func image(for model: XiaomiRemoteModel?) -> NSImage? {
-        let resourceName = VoiceRemoteCatalog.photoResource(for: model ?? .rc003)
-            ?? "RC003-remote-photo"
+        guard let resourceName = resourceName(for: model) else { return nil }
         return images[resourceName]
     }
 }

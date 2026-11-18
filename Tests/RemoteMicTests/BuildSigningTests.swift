@@ -191,7 +191,7 @@ struct BuildSigningTests {
         #expect(!buildSource.contains("for app_icon_name in standard faceted-duck"))
     }
 
-    @Test func buildDefaultsToStableAdHocSigning() throws {
+    @Test func buildDefaultsToStableAdHocSigningWithoutSparklePayloads() throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -205,11 +205,11 @@ struct BuildSigningTests {
         #expect(source.contains("SIGNING_IDENTITY=\"${CODE_SIGN_IDENTITY:--}\""))
         #expect(source.contains("if [[ \"$SIGNING_IDENTITY\" == \"-\" ]]; then"))
         #expect(source.contains("designated => identifier"))
-        #expect(source.contains("XPCServices/Installer.xpc"))
-        #expect(source.contains("XPCServices/Downloader.xpc"))
-        #expect(source.contains("--preserve-metadata=entitlements"))
-        #expect(source.contains("$SPARKLE_VERSION_DIR/Autoupdate"))
-        #expect(source.contains("$SPARKLE_VERSION_DIR/Updater.app"))
+        #expect(!source.contains("XPCServices/Installer.xpc"))
+        #expect(!source.contains("XPCServices/Downloader.xpc"))
+        #expect(!source.contains("--preserve-metadata=entitlements"))
+        #expect(!source.contains("$SPARKLE_VERSION_DIR/Autoupdate"))
+        #expect(!source.contains("$SPARKLE_VERSION_DIR/Updater.app"))
         #expect(source.contains("Contents/Helpers/SayAllMCP"))
         #expect(source.contains("$MCP_HELPER_PATH"))
         #expect(!source.contains("security find-identity -p codesigning -v"))
@@ -307,11 +307,11 @@ struct BuildSigningTests {
         #expect(buildSource.contains("SayAllSentryDSN"))
         #expect(verifySource.contains("SayAllSentryDSN"))
 
-        // Execute the production verifier block. Missing-key plutil errors go to
-        // stdout on macOS, so exit status, not output content, defines presence.
+        // Execute the production diagnostic verifier block. The offline build
+        // has no Sparkle public key, so anchor directly on the diagnostic key.
         let start = try #require(verifySource.range(of:
-            "test -n \"$(plutil -extract SUPublicEDKey raw -o - \"$PLIST\")\"\n"
-        )).upperBound
+            "if plutil -type SayAllDiagnosticPublicKey \"$PLIST\" >/dev/null 2>&1; then\n"
+        )).lowerBound
         let end = try #require(verifySource.range(of: "SAYALL_AI_INCLUDED=\"")).lowerBound
         let block = String(verifySource[start..<end])
         let validKey = Data(repeating: 7, count: 32).base64EncodedString()
@@ -730,7 +730,7 @@ struct BuildSigningTests {
         #expect(!prepareSource.contains("rm -rf"))
     }
 
-    @Test func unavailablePreReleaseFeedDoesNotPresentACustomErrorAlert() throws {
+    @Test func offlineBuildDisablesUpdateChecksWithoutNetworkFallbacks() throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -740,9 +740,12 @@ struct BuildSigningTests {
             encoding: .utf8
         )
 
-        #expect(source.contains("source=cloudflare_channel"))
-        #expect(source.contains(#"source=\(testFeed == nil ? "cloudflare_channel" : "ui_test")"#))
-        #expect(source.contains("user_alert=false"))
+        #expect(source.contains("UPDATE CHECK startup result=disabled reason=offline_only"))
+        #expect(source.contains("UPDATE CHECK phase=completed result=disabled reason=offline_only"))
+        #expect(source.contains(#"purpose=\(purpose == .information ? "information" : "user_initiated")"#))
+        #expect(!source.contains("cloudflare_channel"))
+        #expect(!source.contains("ui_test"))
+        #expect(!source.contains("user_alert"))
         #expect(!source.contains("api.github.com/repos/HD838A/remote-mic-app/releases"))
         #expect(!source.contains("showPreReleaseFeedUnavailableAlert"))
     }
@@ -1087,6 +1090,81 @@ struct BuildSigningTests {
         #expect(!postinstallSource.contains("xcrun"))
     }
 
+    @Test func publicOfflineDmgBuildUsesFreshPublicInputs() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        func source(_ path: String) throws -> String {
+            try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)
+        }
+
+        let offlineDmgSource = try source("scripts/build-offline-dmg.sh")
+        let selfTestSource = try source("scripts/test.sh")
+        let appBuildSource = try source("scripts/build-app.sh")
+        let packageSource = try source("scripts/build-doubao-driver-pkg.sh")
+        let packageVerifierSource = try source("scripts/verify-doubao-driver-pkg.sh")
+        let postinstallSource = try source("packaging/doubao-driver/install/postinstall")
+        let appleSiliconPublicDistribution = try source(
+            "packaging/doubao-driver/distribution/apple-silicon-public.xml"
+        )
+        let intelPublicDistribution = try source(
+            "packaging/doubao-driver/distribution/intel-public.xml"
+        )
+        let prerequisites = try source("BUILD_PREREQUISITES.md")
+
+        #expect(offlineDmgSource.contains("status --porcelain --untracked-files=all"))
+        #expect(offlineDmgSource.contains("/private/tmp/sayall-offline-build.XXXXXX"))
+        #expect(offlineDmgSource.contains("SAYALL_PRIVATE_PLATFORM_MODE=public"))
+        #expect(offlineDmgSource.contains("SAYALL_BUILD_CHANNEL=public"))
+        #expect(offlineDmgSource.contains("CODE_SIGN_IDENTITY=-"))
+        #expect(offlineDmgSource.contains("INSTALLER_SIGNING_IDENTITY=-"))
+        #expect(offlineDmgSource.contains("REQUIRE_NOTARIZATION=0"))
+        #expect(offlineDmgSource.contains("REMOTE_MIC_SELF_TEST_OUTPUT="))
+        #expect(offlineDmgSource.contains("REMOTE_MIC_BUILD_SCRATCH_PATH="))
+        #expect(offlineDmgSource.contains("swift test"))
+        #expect(offlineDmgSource.contains("--disable-keychain"))
+        #expect(offlineDmgSource.contains("scripts/build-dmg.sh"))
+        #expect(offlineDmgSource.contains("scripts/verify-dmg.sh"))
+        #expect(offlineDmgSource.contains("scripts/verify-release-asset-source.sh"))
+
+        #expect(selfTestSource.contains("REMOTE_MIC_SELF_TEST_OUTPUT"))
+        #expect(selfTestSource.contains("REMOTE_MIC_TEST_SCRATCH_PATH"))
+        #expect(selfTestSource.contains("REMOTE_MIC_TEST_CACHE_PATH"))
+        #expect(selfTestSource.contains("--scratch-path"))
+        #expect(selfTestSource.contains("--cache-path"))
+        #expect(appBuildSource.contains("Chromecast-remote-photo.png"))
+        #expect(FileManager.default.fileExists(
+            atPath: root.appendingPathComponent("Resources/Chromecast-remote-photo.png").path
+        ))
+
+        #expect(packageSource.contains("PUBLIC_DISTRIBUTION="))
+        #expect(packageSource.contains("SayAllSiriRemoteIncluded"))
+        #expect(packageSource.contains("DISTRIBUTION=\"$PUBLIC_DISTRIBUTION\""))
+        #expect(packageVerifierSource.contains("HAS_SIRI_REMOTE_COMPONENT"))
+        #expect(packageVerifierSource.contains(
+            "public Installer choices unexpectedly include Siri Remote"
+        ))
+        #expect(postinstallSource.contains("OPTIONAL_APP_EXECUTABLES"))
+
+        for distribution in [
+            appleSiliconPublicDistribution,
+            intelPublicDistribution,
+        ] {
+            #expect(distribution.contains("customize=\"never\""))
+            #expect(distribution.contains("RemoteMicComponent.pkg"))
+            #expect(!distribution.contains("SiriRemoteComponent"))
+            #expect(!distribution.contains("siri-remote"))
+            #expect(!distribution.contains("receiptForIdentifier"))
+        }
+
+        #expect(prerequisites.contains("./scripts/build-offline-dmg.sh native"))
+        #expect(prerequisites.contains("sudo xcode-select"))
+        #expect(prerequisites.contains("输入监控"))
+        #expect(prerequisites.contains("辅助功能"))
+        #expect(prerequisites.contains("Apple 公证"))
+    }
+
     @Test func releaseBundleNameMatchesBrandingAndInstallerPaths() throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -1405,6 +1483,31 @@ struct BuildSigningTests {
                 )
             }
         }
+    }
+
+    @Test func directVirtualAudioInstallerIsSafeUnderSudoPath() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let verifier = try String(
+            contentsOf: root.appendingPathComponent("scripts/verify-doubao-driver.sh"),
+            encoding: .utf8
+        )
+        let wrapper = try String(
+            contentsOf: root.appendingPathComponent("scripts/install-virtual-audio-driver.sh"),
+            encoding: .utf8
+        )
+
+        #expect(!verifier.contains("| rg "))
+        #expect(!verifier.contains("| rg\n"))
+        #expect(verifier.contains("/usr/bin/grep"))
+        #expect(verifier.contains("/usr/bin/xcrun"))
+        #expect(verifier.contains("/usr/bin/plutil"))
+        #expect(verifier.contains("/usr/bin/codesign"))
+        #expect(verifier.contains("/usr/bin/lipo"))
+        #expect(verifier.contains("/usr/bin/strings"))
+        #expect(wrapper.contains("exec \"$ROOT/scripts/install-doubao-driver.sh\" \"$@\""))
     }
 
     /// Extracts the shipped `restart_audio_service` function from a script and

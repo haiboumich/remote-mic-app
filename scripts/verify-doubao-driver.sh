@@ -22,28 +22,28 @@ fi
 test -d "$DRIVER"
 test -f "$PLIST"
 test -x "$BINARY"
-test "$(plutil -extract CFBundleIdentifier raw -o - "$PLIST")" = "com.hd838a.MiRemoteV2ch"
-test "$(plutil -extract CFBundleName raw -o - "$PLIST")" = "MiRemoteV2ch"
-codesign --verify --deep --strict "$DRIVER"
+test "$(/usr/bin/plutil -extract CFBundleIdentifier raw -o - "$PLIST")" = "com.hd838a.MiRemoteV2ch"
+test "$(/usr/bin/plutil -extract CFBundleName raw -o - "$PLIST")" = "MiRemoteV2ch"
+/usr/bin/codesign --verify --deep --strict "$DRIVER"
 if [[ "$REQUIRE_DEVELOPER_ID_SIGNING" == "1" ]]; then
-  SIGNATURE_DETAILS="$(codesign -dvvv "$DRIVER" 2>&1)"
-  print -r -- "$SIGNATURE_DETAILS" | rg -q '^Authority=Developer ID Application:'
-  print -r -- "$SIGNATURE_DETAILS" | rg -q "^TeamIdentifier=$EXPECTED_DEVELOPER_TEAM_ID$"
-  print -r -- "$SIGNATURE_DETAILS" | rg -q '^CodeDirectory .*flags=.*runtime'
+  SIGNATURE_DETAILS="$(/usr/bin/codesign -dvvv "$DRIVER" 2>&1)"
+  print -r -- "$SIGNATURE_DETAILS" | /usr/bin/grep -qE '^Authority=Developer ID Application:'
+  print -r -- "$SIGNATURE_DETAILS" | /usr/bin/grep -qE "^TeamIdentifier=$EXPECTED_DEVELOPER_TEAM_ID$"
+  print -r -- "$SIGNATURE_DETAILS" | /usr/bin/grep -qE '^CodeDirectory .*flags=.*runtime'
 fi
-ARCHS="$(lipo -archs "$BINARY")"
+ARCHS="$(/usr/bin/lipo -archs "$BINARY")"
 test "$ARCHS" = "$RELEASE_ARCH"
-xcrun vtool -show-build "$BINARY" | rg -Fq "minos $RELEASE_MIN_SYSTEM_VERSION"
+/usr/bin/xcrun vtool -show-build "$BINARY" | /usr/bin/grep -Fq "minos $RELEASE_MIN_SYSTEM_VERSION"
 case "$NAMING_VARIANT" in
   brand) DEVICE_NAME="SayAll" ;;
   legacy) DEVICE_NAME="MiRemoteV %ich" ;;
   *) print -u2 "unknown driver naming variant"; exit 1 ;;
 esac
-test "$(plutil -extract SayAllNamingVariant raw -o - "$PLIST")" = "$NAMING_VARIANT"
-strings "$BINARY" | rg -Fxq "$DEVICE_NAME"
-strings "$BINARY" | rg -qx 'MiRemoteV%ich_UID'
-strings "$BINARY" | rg -qx 'MiRemoteV%ich_ModelUID'
-strings "$BINARY" | rg -qx 'MiRemoteV%ich_2_UID'
+test "$(/usr/bin/plutil -extract SayAllNamingVariant raw -o - "$PLIST")" = "$NAMING_VARIANT"
+/usr/bin/strings "$BINARY" | /usr/bin/grep -Fxq "$DEVICE_NAME"
+/usr/bin/strings "$BINARY" | /usr/bin/grep -Fxq 'MiRemoteV%ich_UID'
+/usr/bin/strings "$BINARY" | /usr/bin/grep -Fxq 'MiRemoteV%ich_ModelUID'
+/usr/bin/strings "$BINARY" | /usr/bin/grep -Fxq 'MiRemoteV%ich_2_UID'
 
 print "DOUBAO DRIVER VERIFY PASS: $DRIVER"
 print "RELEASE VARIANT: $RELEASE_VARIANT"

@@ -202,6 +202,16 @@ struct ChromecastRemoteControlEvent: Equatable {
 final class ChromecastFeatureIntegration {
     static let publicDeclaredCapabilities: ChromecastDeclaredCapabilities = [.voiceStream]
 
+    /// Public/offline builds intentionally expose only the ATVV voice stream.
+    /// The private integration can additionally emit paired ordinary-button edges.
+    static var supportsOrdinaryControlEdges: Bool {
+        #if SAYALL_CHROMECAST_ENABLED && canImport(SayAllChromecast)
+        return true
+        #else
+        return publicDeclaredCapabilities.contains(.controlEdges)
+        #endif
+    }
+
     static var supportsToggleVoiceGesture: Bool {
         #if SAYALL_CHROMECAST_ENABLED && canImport(SayAllChromecast)
         return true

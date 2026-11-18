@@ -811,7 +811,7 @@ struct OnboardingView: View {
 
     private var availablePhysicalControlSources: [OnboardingControlSource] {
         visibleControlSources.filter {
-            [.xiaomiRemote, .siriRemote].contains($0)
+            [.xiaomiRemote, .siriRemote, .chromecastRemote].contains($0)
         }
     }
 
@@ -906,6 +906,20 @@ struct OnboardingView: View {
             )
             if case let .bundled(resourceName) = photoKind,
                let image = bundledRemoteImage(resourceName: resourceName) {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: emphasized ? 42 : 30, height: emphasized ? 72 : 50)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            } else {
+                Image(systemName: controlSourceIcon(source))
+                    .font(.system(size: emphasized ? 21 : 17, weight: .medium))
+                    .foregroundStyle(Color.accentColor)
+                    .frame(width: emphasized ? 40 : 34, height: emphasized ? 40 : 34)
+                    .background(Color.accentColor.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
+            }
+        case .chromecastRemote:
+            if let image = bundledRemoteImage(resourceName: "Chromecast-remote-photo") {
                 Image(nsImage: image)
                     .resizable()
                     .scaledToFit()
@@ -1616,7 +1630,7 @@ struct OnboardingView: View {
                 icon: selectedControlConnected
                     ? "checkmark.circle.fill"
                     : "dot.radiowaves.left.and.right",
-                title: !selectedControlConnected && !observedRemoteButtons.isEmpty
+                title: !selectedControlConnected && remoteEvidenceObserved
                     ? localization.text("onboarding.remote.hid_connected")
                     : selectedControlConnected
                         ? localization.text("onboarding.remote.connected")
@@ -1624,7 +1638,7 @@ struct OnboardingView: View {
                 detail: localization.text(
                     selectedControlConnected
                         ? "onboarding.remote.connected_detail"
-                        : !observedRemoteButtons.isEmpty
+                        : remoteEvidenceObserved
                             ? "onboarding.remote.hid_connected_detail"
                             : "onboarding.remote.searching_detail"
                 ),
@@ -1633,21 +1647,30 @@ struct OnboardingView: View {
             )
 
             statusCard(
-                icon: remoteInputDiagnostic.shouldShowVoiceButtonCorrection
+                icon: isVoiceOnlyChromecast && remoteEvidenceObserved
+                    ? "checkmark.circle.fill"
+                    : isVoiceOnlyChromecast
+                        ? "mic.fill"
+                        : remoteInputDiagnostic.shouldShowVoiceButtonCorrection
                     ? "exclamationmark.triangle.fill"
                     : observedRemoteButtons.isEmpty
                         ? "button.programmable"
                         : "checkmark.circle.fill",
                 title: localization.text(
-                    remoteInputDiagnostic.shouldShowVoiceButtonCorrection
+                    isVoiceOnlyChromecast
+                        ? (remoteEvidenceObserved
+                            ? "onboarding.remote.voice_only.received"
+                            : "onboarding.remote.voice_only.waiting")
+                        : remoteInputDiagnostic.shouldShowVoiceButtonCorrection
                         ? "onboarding.remote.voice_button_mistake.title"
                         : observedRemoteButtons.isEmpty
                             ? "onboarding.remote.button_waiting"
                             : "onboarding.remote.button_received"
                 ),
                 detail: physicalRemoteButtonStatusDetail,
-                isComplete: !observedRemoteButtons.isEmpty,
-                pendingColor: remoteInputDiagnostic.shouldShowVoiceButtonCorrection ? .orange : nil,
+                isComplete: remoteEvidenceObserved,
+                pendingColor: !isVoiceOnlyChromecast && remoteInputDiagnostic.shouldShowVoiceButtonCorrection
+                    ? .orange : nil,
                 compact: true
             )
 
@@ -1662,12 +1685,35 @@ struct OnboardingView: View {
     }
 
     private var physicalRemoteButtonStatusDetail: String {
-        let instructionKey = remoteInputDiagnostic.shouldShowVoiceButtonCorrection
+        let instructionKey = isVoiceOnlyChromecast
+            ? (remoteEvidenceObserved
+                ? "onboarding.remote.voice_only.received_detail"
+                : "onboarding.remote.voice_only.waiting_detail")
+            : remoteInputDiagnostic.shouldShowVoiceButtonCorrection
             ? "onboarding.remote.voice_button_mistake.detail"
             : observedRemoteButtons.isEmpty
                 ? "onboarding.remote.button_waiting_detail"
                 : "onboarding.remote.button_detail"
         return localization.text(instructionKey)
+    }
+
+    private var requiresOrdinaryRemoteButtonObservation: Bool {
+        OnboardingRemoteEvidencePolicy.requiresOrdinaryButtonObservation(
+            for: settings.onboardingControlSource
+        )
+    }
+
+    private var isVoiceOnlyChromecast: Bool {
+        settings.onboardingControlSource == .chromecastRemote &&
+            !requiresOrdinaryRemoteButtonObservation
+    }
+
+    private var remoteEvidenceObserved: Bool {
+        OnboardingRemoteEvidencePolicy.isSatisfied(
+            source: settings.onboardingControlSource,
+            ordinaryButtonObserved: !observedRemoteButtons.isEmpty,
+            voiceButtonObserved: remoteInputDiagnostic.voiceButtonPressCount > 0
+        )
     }
 
     private var shouldShowSecureInputWarning: Bool {
@@ -1676,8 +1722,8 @@ struct OnboardingView: View {
             source: settings.onboardingControlSource,
             remoteConnected: selectedControlConnected,
             remoteButtonObserved: settings.onboardingStep == .controls
-                ? !testedControlButtons.isEmpty
-                : !observedRemoteButtons.isEmpty,
+                ? (!requiresOrdinaryRemoteButtonObservation || !testedControlButtons.isEmpty)
+                : remoteEvidenceObserved,
             secureInputActive: secureInputActive,
             waitStartedAtUptime: secureInputWaitStartedAtUptime,
             nowUptime: ProcessInfo.processInfo.systemUptime
@@ -2254,74 +2300,83 @@ struct OnboardingView: View {
                 .font(.system(size: 14))
                 .foregroundStyle(.secondary)
 
-            if shouldShowSecureInputWarning {
-                secureInputWarningCard
-            }
+            if !requiresOrdinaryRemoteButtonObservation {
+                statusCard(
+                    icon: "waveform.circle.fill",
+                    title: localization.text("onboarding.controls.voice_only.title"),
+                    detail: localization.text("onboarding.controls.voice_only.detail"),
+                    isComplete: true
+                )
+            } else {
+                if shouldShowSecureInputWarning {
+                    secureInputWarningCard
+                }
 
-            if let buttons = displayedControlButtons {
-                LazyVGrid(
-                    columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3),
-                    spacing: 8
-                ) {
-                    ForEach(buttons) { button in
-                        let tested = testedControlButtons.contains(button)
-                        HStack(spacing: 8) {
-                            Image(systemName: tested ? "checkmark.circle.fill" : "circle")
-                                .foregroundStyle(tested ? Color.green : Color.secondary)
-                            Text(button.displayName(using: localization))
-                                .font(.system(size: 12, weight: tested ? .semibold : .regular))
-                                .lineLimit(1)
-                            Spacer(minLength: 0)
+                if let buttons = displayedControlButtons {
+                    LazyVGrid(
+                        columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3),
+                        spacing: 8
+                    ) {
+                        ForEach(buttons) { button in
+                            let tested = testedControlButtons.contains(button)
+                            HStack(spacing: 8) {
+                                Image(systemName: tested ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle(tested ? Color.green : Color.secondary)
+                                Text(button.displayName(using: localization))
+                                    .font(.system(size: 12, weight: tested ? .semibold : .regular))
+                                    .lineLimit(1)
+                                Spacer(minLength: 0)
+                            }
+                            .padding(.horizontal, 10)
+                            .frame(height: 38)
+                            .background(
+                                tested ? Color.green.opacity(0.10) : Color.primary.opacity(0.035),
+                                in: RoundedRectangle(cornerRadius: 9)
+                            )
                         }
-                        .padding(.horizontal, 10)
-                        .frame(height: 38)
-                        .background(
-                            tested ? Color.green.opacity(0.10) : Color.primary.opacity(0.035),
-                            in: RoundedRectangle(cornerRadius: 9)
-                        )
+                    }
+                } else {
+                    HStack(spacing: 8) {
+                        ForEach(0..<3, id: \.self) { index in
+                            HStack(spacing: 8) {
+                                Image(systemName: testedControlButtons.count > index
+                                    ? "checkmark.circle.fill"
+                                    : "circle")
+                                    .foregroundStyle(testedControlButtons.count > index
+                                        ? Color.green
+                                        : Color.secondary)
+                                Text(LocalizedMessage(
+                                    "onboarding.controls.mobile_slot",
+                                    arguments: [String(index + 1)]
+                                ).text(using: localization))
+                                .font(.system(size: 12, weight: .medium))
+                            }
+                            .padding(.horizontal, 10)
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            .background(
+                                Color.primary.opacity(0.035),
+                                in: RoundedRectangle(cornerRadius: 9)
+                            )
+                        }
                     }
                 }
-            } else {
+
                 HStack(spacing: 8) {
                     ForEach(0..<3, id: \.self) { index in
-                        HStack(spacing: 8) {
-                            Image(systemName: testedControlButtons.count > index
-                                ? "checkmark.circle.fill"
-                                : "circle")
-                                .foregroundStyle(testedControlButtons.count > index
-                                    ? Color.green
-                                    : Color.secondary)
-                            Text(LocalizedMessage(
-                                "onboarding.controls.mobile_slot",
-                                arguments: [String(index + 1)]
-                            ).text(using: localization))
-                            .font(.system(size: 12, weight: .medium))
-                        }
-                        .padding(.horizontal, 10)
-                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                        .background(
-                            Color.primary.opacity(0.035),
-                            in: RoundedRectangle(cornerRadius: 9)
-                        )
+                        Image(systemName: testedControlButtons.count > index ? "checkmark.circle.fill" : "circle")
+                            .font(.system(size: 18))
+                            .foregroundStyle(testedControlButtons.count > index ? Color.green : Color.secondary)
                     }
+                    Text(verbatim: localization.text(
+                        testedControlButtons.count >= 3
+                            ? "onboarding.controls.ready"
+                            : "onboarding.controls.waiting"
+                    ))
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
                 }
+                .padding(.top, 4)
             }
-
-            HStack(spacing: 8) {
-                ForEach(0..<3, id: \.self) { index in
-                    Image(systemName: testedControlButtons.count > index ? "checkmark.circle.fill" : "circle")
-                        .font(.system(size: 18))
-                        .foregroundStyle(testedControlButtons.count > index ? Color.green : Color.secondary)
-                }
-                Text(verbatim: localization.text(
-                    testedControlButtons.count >= 3
-                        ? "onboarding.controls.ready"
-                        : "onboarding.controls.waiting"
-                ))
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.secondary)
-            }
-            .padding(.top, 4)
         }
     }
 
@@ -2373,7 +2428,10 @@ struct OnboardingView: View {
     }
 
     private var controlsDetailKey: String {
-        Self.controlsDetailKey(for: settings.onboardingControlSource)
+        if !requiresOrdinaryRemoteButtonObservation {
+            return "onboarding.controls.voice_only.detail"
+        }
+        return Self.controlsDetailKey(for: settings.onboardingControlSource)
     }
 
     static func controlsDetailKey(for source: OnboardingControlSource) -> String {
@@ -2685,7 +2743,16 @@ struct OnboardingView: View {
                 .scaleEffect(1.8)
                 .frame(width: 190, height: 360)
             #else
-            remotePhotoPlaceholder
+            if let image = bundledRemoteImage(resourceName: "Chromecast-remote-photo") {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: 190, maxHeight: 480)
+                    .clipShape(RoundedRectangle(cornerRadius: 18))
+                    .shadow(color: .black.opacity(0.20), radius: 16, y: 10)
+            } else {
+                remotePhotoPlaceholder
+            }
             #endif
         case .placeholder:
             remotePhotoPlaceholder
@@ -2889,7 +2956,12 @@ struct OnboardingView: View {
                     selectedControlConnectedKey,
                     isComplete: selectedControlConnected
                 )
-                sideCheck("onboarding.side.button_received", isComplete: !observedRemoteButtons.isEmpty)
+                sideCheck(
+                    isVoiceOnlyChromecast
+                        ? "onboarding.side.voice_button_received"
+                        : "onboarding.side.button_received",
+                    isComplete: remoteEvidenceObserved
+                )
             }
         case .audio:
             sidePanel(titleKey: "onboarding.side.audio") {
@@ -2906,8 +2978,12 @@ struct OnboardingView: View {
             }
         case .controls:
             sidePanel(titleKey: "onboarding.side.controls") {
-                sideCheck("onboarding.side.three_buttons", isComplete: testedControlButtons.count >= 3)
-                sideCheck("onboarding.side.mapping_enabled", isComplete: settings.customMappingEnabled)
+                if requiresOrdinaryRemoteButtonObservation {
+                    sideCheck("onboarding.side.three_buttons", isComplete: testedControlButtons.count >= 3)
+                    sideCheck("onboarding.side.mapping_enabled", isComplete: settings.customMappingEnabled)
+                } else {
+                    sideCheck("onboarding.side.voice_only", isComplete: true)
+                }
             }
         default:
             EmptyView()
@@ -3169,6 +3245,7 @@ struct OnboardingView: View {
             accessibilityGranted: accessibilityGranted,
             remoteConnected: selectedControlConnected,
             remoteButtonObserved: !observedRemoteButtons.isEmpty,
+            remoteVoiceButtonObserved: remoteInputDiagnostic.voiceButtonPressCount > 0,
             audioReady: model.isAudioOutputReady,
             audioOutputSelected: audioOutputSelected,
             voiceSessionStarted: voiceSessionStarted,
@@ -4178,11 +4255,6 @@ struct OnboardingView: View {
 
     private func prepareForStep(_ step: OnboardingStep) {
         refreshPermissionStates()
-        if settings.onboardingControlSource == .chromecastRemote {
-            selectControlSource(.unselected)
-            settings.setOnboardingStep(.remoteAvailability)
-            return
-        }
         if settings.onboardingControlSource == .siriRemote,
            !availableControlSources.contains(.siriRemote) {
             selectControlSource(.unselected)

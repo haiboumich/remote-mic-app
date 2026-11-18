@@ -2,7 +2,9 @@
 set -euo pipefail
 
 ROOT="${0:A:h:h}"
-OUTPUT="$ROOT/.build/self-test/RemoteMicSelfTest"
+OUTPUT="${REMOTE_MIC_SELF_TEST_OUTPUT:-$ROOT/.build/self-test/RemoteMicSelfTest}"
+TEST_SCRATCH_PATH="${REMOTE_MIC_TEST_SCRATCH_PATH:-}"
+TEST_CACHE_PATH="${REMOTE_MIC_TEST_CACHE_PATH:-}"
 SKIP_SWIFT_PACKAGE_BUILD="${SKIP_SWIFT_PACKAGE_BUILD:-0}"
 
 case "$SKIP_SWIFT_PACKAGE_BUILD" in
@@ -12,6 +14,7 @@ esac
 
 mkdir -p "${OUTPUT:h}"
 xcrun swiftc \
+  "$ROOT/Sources/RemoteMic/ATVVAudioDiagnostics.swift" \
   "$ROOT/Sources/RemoteMic/ATVVProtocol.swift" \
   "$ROOT/Sources/RemoteMic/SystemAudioLifecycle.swift" \
   "$ROOT/Sources/RemoteMic/BluetoothLifecycle.swift" \
@@ -33,9 +36,12 @@ xcrun swiftc \
   "$ROOT/Sources/RemoteMic/AppSettings.swift" \
   "$ROOT/Sources/RemoteMic/VirtualAudioLevelPolicy.swift" \
   "$ROOT/Sources/RemoteMic/LocalUsageLedger.swift" \
+  "$ROOT/Sources/RemoteMic/OfflineRuntimePolicy.swift" \
   "$ROOT/Sources/RemoteMic/MacConfigurationBackup.swift" \
   "$ROOT/Sources/RemoteMic/MembershipFeatureTypes.swift" \
   "$ROOT/Sources/RemoteMic/ChromecastFeatureIntegration.swift" \
+  "$ROOT/Sources/RemoteMic/ChromecastRemoteIdentity.swift" \
+  "$ROOT/Sources/RemoteMic/PublicChromecastBluetoothBridge.swift" \
   "$ROOT/Sources/RemoteMic/AppLinks.swift" \
   "$ROOT/Sources/RemoteMic/Localization.swift" \
   "$ROOT/Sources/RemoteMic/VoiceFunctionKeyLatch.swift" \
@@ -53,7 +59,14 @@ xcrun swiftc \
 "$OUTPUT"
 
 if [[ "$SKIP_SWIFT_PACKAGE_BUILD" == "0" ]]; then
-  xcrun swift build --disable-keychain
+  swift_build_arguments=(--disable-keychain)
+  if [[ -n "$TEST_SCRATCH_PATH" ]]; then
+    swift_build_arguments+=(--scratch-path "$TEST_SCRATCH_PATH")
+  fi
+  if [[ -n "$TEST_CACHE_PATH" ]]; then
+    swift_build_arguments+=(--cache-path "$TEST_CACHE_PATH")
+  fi
+  xcrun swift build "${swift_build_arguments[@]}"
 else
   print "SWIFT PACKAGE BUILD SKIPPED: already completed by the current CI job"
 fi

@@ -514,7 +514,8 @@ opus_build="$ROOT/scripts/build-apple-remote-opus.sh"
   exit 1
 }
 /usr/bin/grep -Fq -- '--disable-keychain' "$ROOT/scripts/build-app.sh"
-/usr/bin/grep -Fq 'xcrun swift build --disable-keychain' "$ROOT/scripts/test.sh"
+/usr/bin/grep -Fq 'swift_build_arguments=(--disable-keychain)' "$ROOT/scripts/test.sh"
+/usr/bin/grep -Fq 'xcrun swift build "${swift_build_arguments[@]}"' "$ROOT/scripts/test.sh"
 if [[ "$(/usr/bin/grep -c -- '--disable-keychain' "$ROOT/scripts/build-app.sh")" -lt 2 ]]; then
   print -u2 "local SwiftPM entry points must disable macOS Keychain credential lookup"
   exit 1
