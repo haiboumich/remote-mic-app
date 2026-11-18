@@ -1227,19 +1227,7 @@ private final class RemoteMicAppDelegate: NSObject, NSApplicationDelegate, NSMen
     }
 
     @objc private func showAbout() {
-        NSApp.activate(ignoringOtherApps: true)
-        let shortVersion = Bundle.main.object(
-            forInfoDictionaryKey: "CFBundleShortVersionString"
-        ) as? String ?? localization.text("common.value.unknown")
-        let alert = NSAlert()
-        alert.messageText = localization.text("app.name")
-        alert.informativeText = String(
-            format: localization.text("about.alert.description_with_version"),
-            locale: localization.locale,
-            arguments: [shortVersion]
-        )
-        alert.addButton(withTitle: localization.text("common.action.ok"))
-        alert.runModal()
+        showSettingsWindow(initialSection: .about)
     }
 
     @objc private func selectLanguage(_ sender: NSMenuItem) {

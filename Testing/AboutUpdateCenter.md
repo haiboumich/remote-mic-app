@@ -1,5 +1,26 @@
 # 设置页版本中心与跨版本更新测试手册
 
+## offline-only 构建变体
+
+`offline-only` 公开构建不执行本手册中的 Sparkle、发布通道或硬件公告用例。该变体必须额外
+验证：
+
+1. 设置 / About 只显示当前版本、Build 和 `Commit: <8 位 SHA>`，不显示检查更新、
+   预发布开关、待更新版本、Release Notes 或硬件下载公告。
+2. 状态菜单和 App 菜单的“关于”直接打开该设置页；不显示不包含 commit 的独立弹窗。
+3. 精确读取 App `Info.plist` 中的 `SayAllSourceCommit`，确认页面短 SHA 与它的前 8 位相同。
+4. 只有用户点击 commit 时才打开
+   `https://github.com/haiboumich/remote-mic-app/commit/<完整 SHA>`；打开页面、启动 App
+   或保持运行不得因此产生 DNS/HTTP(S) 请求。包内 SHA 缺失、长度错误或包含非小写
+   十六进制字符时，commit 链接必须完全隐藏。
+5. 连接页不显示 iPhone、Apple Watch 或网页遥控；Onboarding 不显示这两类在线控制源。
+   语音工具官网/下载链接可保留，但仅在用户点击时交给系统浏览器，App 不预请求。
+6. 诊断与日志区只允许打开本机日志和复制脱敏摘要；不显示诊断上传状态，并明确 SayAll
+   不上传日志。
+
+失败判定：任一在线更新、公告或云遥控入口在 offline-only UI 可见；commit 文案与
+包内 SHA 不一致；未点击 commit 就产生公网请求；或点击后打开其他提交。
+
 ## 适用范围
 
 - 适用版本：macOS `1.9.21` Pre-release 及后续版本

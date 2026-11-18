@@ -8,8 +8,10 @@ enum AppLinks {
     static let chineseIOSAppStore = OfflineRuntimePolicy.disabledExternalURL
     static let englishIOSAppStore = OfflineRuntimePolicy.disabledExternalURL
     static let feedback = OfflineRuntimePolicy.disabledExternalURL
-    static let doubaoInputMethod = OfflineRuntimePolicy.disabledExternalURL
-    static let vokieWebsite = OfflineRuntimePolicy.disabledExternalURL
+    static let doubaoInputMethod = URL(
+        string: "https://shurufa.doubao.com/?utm_source=sayall.app"
+    )!
+    static let vokieWebsite = URL(string: "https://vokie.com/?utm_source=sayall.app")!
 
     static func iOSAppStore(for locale: Locale) -> URL {
         locale.identifier.lowercased().hasPrefix("zh")

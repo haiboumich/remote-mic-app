@@ -300,6 +300,21 @@ if [[ "$REQUIRE_RELEASE_BUILD_CHANNEL" == "1" && "$SAYALL_BUILD_CHANNEL" != "rel
   print -u2 "Protected release App must declare SayAllBuildChannel=release"
   exit 1
 fi
+if [[ "$SAYALL_BUILD_CHANNEL" == public ]]; then
+  for online_key in \
+    SayAllDiagnosticPublicKey SayAllClientProofKey SayAllSentryDSN \
+    RemoteWebRelayURL EarlyAccessServiceURL NSBonjourServices \
+    NSLocalNetworkUsageDescription; do
+    if plutil -type "$online_key" "$PLIST" >/dev/null 2>&1; then
+      print -u2 "Public offline App must not carry online configuration: $online_key"
+      exit 1
+    fi
+  done
+  if find "$APP" -name 'Sentry.framework' -print -quit | /usr/bin/grep -q .; then
+    print -u2 "Public offline App must not contain Sentry.framework"
+    exit 1
+  fi
+fi
 if [[ "$SAYALL_BUILD_CHANNEL" == "local" || "$SAYALL_BUILD_CHANNEL" == "release" ]]; then
   REQUIRE_DIAGNOSTIC_SERVICE=1
 fi

@@ -1120,6 +1120,9 @@ struct BuildSigningTests {
         #expect(offlineDmgSource.contains("CODE_SIGN_IDENTITY=-"))
         #expect(offlineDmgSource.contains("INSTALLER_SIGNING_IDENTITY=-"))
         #expect(offlineDmgSource.contains("REQUIRE_NOTARIZATION=0"))
+        #expect(offlineDmgSource.contains(
+            "REMOTE_MIC_SENTRY_DSN REMOTE_WEB_RELAY_URL EARLY_ACCESS_SERVICE_URL"
+        ))
         #expect(offlineDmgSource.contains("REMOTE_MIC_SELF_TEST_OUTPUT="))
         #expect(offlineDmgSource.contains("REMOTE_MIC_BUILD_SCRATCH_PATH="))
         #expect(offlineDmgSource.contains("swift test"))
@@ -1134,8 +1137,22 @@ struct BuildSigningTests {
         #expect(selfTestSource.contains("--scratch-path"))
         #expect(selfTestSource.contains("--cache-path"))
         #expect(appBuildSource.contains("Chromecast-remote-photo.png"))
+        #expect(appBuildSource.contains(
+            "The public offline build rejects online configuration"
+        ))
+        #expect(appBuildSource.contains(
+            "RELEASE_VARIANT\" == \"intel\" && \"$SAYALL_BUILD_CHANNEL\" != public"
+        ))
         #expect(FileManager.default.fileExists(
             atPath: root.appendingPathComponent("Resources/Chromecast-remote-photo.png").path
+        ))
+
+        let appVerifierSource = try source("scripts/verify-app.sh")
+        #expect(appVerifierSource.contains(
+            "Public offline App must not carry online configuration"
+        ))
+        #expect(appVerifierSource.contains(
+            "Public offline App must not contain Sentry.framework"
         ))
 
         #expect(packageSource.contains("PUBLIC_DISTRIBUTION="))

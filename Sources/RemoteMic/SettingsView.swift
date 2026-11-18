@@ -1291,7 +1291,9 @@ struct SettingsView: View {
                     connectionDevicePanel
                         .frame(width: 230)
                     VStack(spacing: 14) {
-                        phoneConnectionsPanel
+                        if OfflineRuntimePolicy.onlineCompanionFeaturesEnabled {
+                            phoneConnectionsPanel
+                        }
                         audioSettingsPanel
                         // Chromecast 连接卡片已按产品要求移除：启用开关默认常开，
                         // 语音键模式在语音键设置面板内，状态见侧边栏「连接」的设备列表。
@@ -6523,7 +6525,9 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("settings.diagnostics.title")
                 .font(.title3.weight(.semibold))
-            Text("diagnostics.logs.privacy")
+            Text(OfflineRuntimePolicy.diagnosticUploadsEnabled
+                ? "diagnostics.logs.privacy"
+                : "diagnostics.logs.offline_privacy")
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
 
@@ -6538,9 +6542,11 @@ struct SettingsView: View {
                     Text("diagnostics.logs.last_entry")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
-                    Text(model.diagnosticUploadStatus.text(using: localization))
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
+                    if OfflineRuntimePolicy.diagnosticUploadsEnabled {
+                        Text(model.diagnosticUploadStatus.text(using: localization))
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 8) {
@@ -6646,7 +6652,7 @@ struct SettingsView: View {
                             Divider()
 
                             VStack(alignment: .leading, spacing: 12) {
-                                HStack(spacing: 8) {
+                                HStack(spacing: 10) {
                                     Text("about.version.current")
                                         .font(.system(size: 12))
                                         .foregroundStyle(.secondary)
@@ -6657,49 +6663,60 @@ struct SettingsView: View {
                                     }
                                     .buttonStyle(.plain)
                                     .contentShape(Rectangle())
-                                    if case .available = updateInformation.state {
-                                        StatusPill(
-                                            text: localization.text("about.version.available"),
-                                            tint: .green
-                                        )
+                                    if let provenance = BuildProvenance.current(),
+                                       let destination = provenance.sourceCommitURL {
+                                        Divider()
+                                            .frame(height: 14)
+                                        Link(destination: destination) {
+                                            Text(String(
+                                                format: localization.text("about.version.source_commit"),
+                                                locale: localization.locale,
+                                                arguments: [provenance.shortSourceCommit]
+                                            ))
+                                            .font(.system(size: 12, weight: .medium))
+                                            .monospacedDigit()
+                                        }
+                                        .help(destination.absoluteString)
                                     }
                                     Spacer(minLength: 8)
                                 }
 
-                                HStack(spacing: 12) {
-                                    Button(action: checkForUpdates) {
-                                        Label(
-                                            "menu.check_for_updates",
-                                            systemImage: "arrow.triangle.2.circlepath"
-                                        )
-                                    }
-                                    .compatibilityButtonStyle(.standard)
-                                    .fixedSize(horizontal: true, vertical: false)
-
-                                    Spacer(minLength: 12)
-
-                                    Toggle(
-                                        "about.version.check_prerelease",
-                                        isOn: $settings.checksForPreReleaseUpdates
-                                    )
-                                    .toggleStyle(.switch)
-                                    .font(.system(size: 12))
-                                }
-
-                                Divider()
-
-                                updateInformationContent
-                                if case let .available(update) = updateInformation.state {
-                                    HStack {
-                                        Spacer()
+                                if OfflineRuntimePolicy.updateFeaturesEnabled {
+                                    HStack(spacing: 12) {
                                         Button(action: checkForUpdates) {
-                                            Text(String(
-                                                format: localization.text("about.version.update_to"),
-                                                locale: localization.locale,
-                                                arguments: [update.displayVersion]
-                                            ))
+                                            Label(
+                                                "menu.check_for_updates",
+                                                systemImage: "arrow.triangle.2.circlepath"
+                                            )
                                         }
-                                        .compatibilityButtonStyle(.prominent)
+                                        .compatibilityButtonStyle(.standard)
+                                        .fixedSize(horizontal: true, vertical: false)
+
+                                        Spacer(minLength: 12)
+
+                                        Toggle(
+                                            "about.version.check_prerelease",
+                                            isOn: $settings.checksForPreReleaseUpdates
+                                        )
+                                        .toggleStyle(.switch)
+                                        .font(.system(size: 12))
+                                    }
+
+                                    Divider()
+
+                                    updateInformationContent
+                                    if case let .available(update) = updateInformation.state {
+                                        HStack {
+                                            Spacer()
+                                            Button(action: checkForUpdates) {
+                                                Text(String(
+                                                    format: localization.text("about.version.update_to"),
+                                                    locale: localization.locale,
+                                                    arguments: [update.displayVersion]
+                                                ))
+                                            }
+                                            .compatibilityButtonStyle(.prominent)
+                                        }
                                     }
                                 }
                             }
@@ -6710,7 +6727,9 @@ struct SettingsView: View {
                         .overlay(alignment: .bottom) { Divider() }
                     }
 
-                    hardwareAnnouncementPanel
+                    if OfflineRuntimePolicy.hardwareAnnouncementsEnabled {
+                        hardwareAnnouncementPanel
+                    }
 
                     inlinePermissionsSection
 
@@ -6953,7 +6972,9 @@ struct SettingsView: View {
             }
         }
         .onAppear {
-            hardwareAnnouncements.refresh()
+            if OfflineRuntimePolicy.hardwareAnnouncementsEnabled {
+                hardwareAnnouncements.refresh()
+            }
         }
     }
 

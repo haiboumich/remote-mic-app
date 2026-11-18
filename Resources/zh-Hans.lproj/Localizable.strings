@@ -537,6 +537,7 @@
 "diagnostics.title" = "诊断";
 "diagnostics.logs.title" = "应用日志";
 "diagnostics.logs.privacy" = "日志加密后供支持排查，平时不会自动上传；只有你主动发送时才会发送安全诊断事件";
+"diagnostics.logs.offline_privacy" = "日志只保存在这台 Mac；SayAll 不会上传。";
 "diagnostics.logs.last_entry" = "打开加密支持日志，或复制脱敏诊断摘要";
 "diagnostics.logs.show_in_finder" = "在 Finder 中显示日志";
 "diagnostics.logs.copy_summary" = "复制诊断摘要";
@@ -707,6 +708,7 @@
 "about.version.title" = "版本与更新";
 "about.version.current" = "当前版本";
 "about.version.current_with_build" = "版本 %1$@（Build %2$@）";
+"about.version.source_commit" = "Commit: %1$@";
 "about.version.latest" = "最新版本";
 "about.version.available" = "可更新";
 "about.version.update_to" = "更新到 %1$@";

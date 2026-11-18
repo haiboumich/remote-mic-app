@@ -45,14 +45,14 @@ struct OnboardingFlowTests {
     }
     #endif
 
-    @Test func onboardingSourceVisibilityKeepsEveryBuildSupportedSource() {
+    @Test func onboardingSourceVisibilityKeepsOnlyOfflinePhysicalSources() {
         let visible = OnboardingControlSourceVisibilityPolicy.visibleSources(
             OnboardingControlSource.allCases
         )
         #expect(visible.contains(.chromecastRemote))
         #expect(visible.contains(.xiaomiRemote))
-        #expect(visible.contains(.appleCompanion))
-        #expect(visible.contains(.webRemote))
+        #expect(!visible.contains(.appleCompanion))
+        #expect(!visible.contains(.webRemote))
         #expect(visible.contains(.unselected))
     }
 
@@ -1560,7 +1560,10 @@ struct OnboardingFlowTests {
         #expect(viewSource.contains("externalToolVoiceKeyConfirmed"))
         #expect(viewSource.contains("externalToolGlobalVoiceConfirmed"))
         #expect(viewSource.contains("externalToolMicrophoneConfirmed"))
-        #expect(viewSource.contains("if voiceToolAvailability[.doubao] == .notInstalled"))
+        #expect(viewSource.contains(
+            "if OfflineRuntimePolicy.toolDownloadLinksEnabled,\n" +
+                "               voiceToolAvailability[.doubao] == .notInstalled"
+        ))
         #expect(!viewSource.contains("settings.onboardingVoiceTool == .doubao,\n"))
         #expect(viewSource.contains("localization.text(settings.onboardingVoiceTool.titleKey)"))
         #expect(rendererSource.contains("allowsInputSourceSwitching: false"))
@@ -3779,7 +3782,7 @@ struct OnboardingFlowTests {
         #expect(vokieSource.probe.actions["voice-tool.vokie.website"] != nil)
         invoke("voice-tool.vokie.website", on: vokieSource)
         #expect(vokieSource.probe.openedURLs.last == AppLinks.vokieWebsite)
-        #expect(AppLinks.vokieWebsite == OfflineRuntimePolicy.disabledExternalURL)
+        #expect(AppLinks.vokieWebsite.host == "vokie.com")
         for index in 0...3 {
             #expect(vokieSource.probe.actions.keys.contains("input-guide.\(index)"))
         }

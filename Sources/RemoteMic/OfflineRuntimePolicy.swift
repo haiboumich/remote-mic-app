@@ -7,6 +7,16 @@ import Foundation
 /// App has launched.
 enum OfflineRuntimePolicy {
     static let externalLinksEnabled = false
+    static let updateFeaturesEnabled = false
+    static let onlineCompanionFeaturesEnabled = false
+    static let hardwareAnnouncementsEnabled = false
+    static let diagnosticUploadsEnabled = false
+    static let toolDownloadLinksEnabled = true
+
+    /// Routable URLs are limited to explicit user actions such as downloading a
+    /// third-party input tool or opening the exact source revision. The App
+    /// never probes or preloads them.
+    static let sourceCommitLinkEnabled = true
 
     /// A non-routable custom scheme used only to keep legacy UI contracts type
     /// safe while their external destinations are removed. It cannot result in

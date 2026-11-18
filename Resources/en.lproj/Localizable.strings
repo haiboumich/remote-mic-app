@@ -537,6 +537,7 @@
 "diagnostics.title" = "Diagnostics";
 "diagnostics.logs.title" = "App Logs";
 "diagnostics.logs.privacy" = "Support logs are encrypted and are never uploaded automatically\nDiagnostic information is sent only when you choose to send it";
+"diagnostics.logs.offline_privacy" = "Logs stay on this Mac. SayAll never uploads them.";
 "diagnostics.logs.last_entry" = "Open encrypted support logs or copy a redacted diagnostic summary";
 "diagnostics.logs.show_in_finder" = "Show Logs in Finder";
 "diagnostics.logs.copy_summary" = "Copy Diagnostic Summary";
@@ -708,6 +709,7 @@
 "about.version.title" = "Version & Updates";
 "about.version.current" = "Current Version";
 "about.version.current_with_build" = "Version %1$@ (Build %2$@)";
+"about.version.source_commit" = "Commit: %1$@";
 "about.version.latest" = "Latest Version";
 "about.version.available" = "Update Available";
 "about.version.update_to" = "Update to %1$@";

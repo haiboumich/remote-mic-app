@@ -223,6 +223,16 @@ if [[ "$SAYALL_BUILD_CHANNEL" == public && "$SAYALL_PRIVATE_PLATFORM_MODE" != pu
   print -u2 "The public build channel requires public platform mode"
   exit 1
 fi
+if [[ "$SAYALL_BUILD_CHANNEL" == public ]]; then
+  for online_configuration in \
+    SAYALL_DIAGNOSTIC_PUBLIC_KEY_BASE64 SAYALL_CLIENT_PROOF_KEY \
+    REMOTE_MIC_SENTRY_DSN REMOTE_WEB_RELAY_URL EARLY_ACCESS_SERVICE_URL; do
+    if [[ -n "${(P)online_configuration:-}" ]]; then
+      print -u2 "The public offline build rejects online configuration: $online_configuration"
+      exit 1
+    fi
+  done
+fi
 if [[ "$PRIVATE_PATHS_PROVIDED" == false ]]; then
   private_channel_args=()
   if [[ -n "$SAYALL_BUILD_CHANNEL" && "$SAYALL_BUILD_CHANNEL" != public ]]; then
@@ -769,7 +779,7 @@ fi
 plutil -remove SayAllChromecastIncluded "$APP_DIR/Contents/Info.plist" 2>/dev/null || true
 plutil -insert SayAllChromecastIncluded -bool "$SAYALL_CHROMECAST_INCLUDED" \
   "$APP_DIR/Contents/Info.plist"
-if [[ "$RELEASE_VARIANT" == "intel" ]]; then
+if [[ "$RELEASE_VARIANT" == "intel" && "$SAYALL_BUILD_CHANNEL" != public ]]; then
   plutil -replace LSMinimumSystemVersion -string "$RELEASE_MIN_SYSTEM_VERSION" \
     "$APP_DIR/Contents/Info.plist"
   plutil -replace SUFeedURL -string "$RELEASE_FEED_URL" \

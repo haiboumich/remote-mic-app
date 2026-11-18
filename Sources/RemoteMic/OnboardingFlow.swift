@@ -584,7 +584,12 @@ enum OnboardingControlSourceVisibilityPolicy {
     static func visibleSources(
         _ sources: [OnboardingControlSource]
     ) -> [OnboardingControlSource] {
-        sources
+        guard !OfflineRuntimePolicy.onlineCompanionFeaturesEnabled else {
+            return sources
+        }
+        return sources.filter {
+            ![.appleCompanion, .webRemote].contains($0)
+        }
     }
 }
 

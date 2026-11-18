@@ -608,7 +608,8 @@ struct OnboardingView: View {
                 }
             }
 
-            if voiceToolAvailability[.doubao] == .notInstalled {
+            if OfflineRuntimePolicy.toolDownloadLinksEnabled,
+               voiceToolAvailability[.doubao] == .notInstalled {
                 HStack(spacing: 8) {
                     Text(verbatim: localization.text("onboarding.voice_tool.doubao.install_detail"))
                         .font(.system(size: 12))
@@ -1104,7 +1105,7 @@ struct OnboardingView: View {
             .buttonStyle(.plain)
             .frame(maxWidth: .infinity, minHeight: tool == .vokie ? 76 : 80, alignment: .top)
 
-            if tool == .vokie {
+            if OfflineRuntimePolicy.toolDownloadLinksEnabled, tool == .vokie {
                 onboardingLink(id: "voice-tool.vokie.website", destination: AppLinks.vokieWebsite) {
                     Text(verbatim: localization.text("onboarding.voice_tool.vokie.website"))
                 }
