@@ -1111,6 +1111,7 @@ struct BuildSigningTests {
         let intelPublicDistribution = try source(
             "packaging/doubao-driver/distribution/intel-public.xml"
         )
+        let makefileSource = try source("Makefile")
         let prerequisites = try source("BUILD_PREREQUISITES.md")
 
         #expect(offlineDmgSource.contains("status --porcelain --untracked-files=all"))
@@ -1181,7 +1182,12 @@ struct BuildSigningTests {
             #expect(!distribution.contains("receiptForIdentifier"))
         }
 
-        #expect(prerequisites.contains("./scripts/build-offline-dmg.sh native"))
+        #expect(makefileSource.contains("source_commit=\"$$(git rev-parse HEAD)\""))
+        #expect(makefileSource.contains("./scripts/build-offline-dmg.sh \"$(DMG_VARIANT)\""))
+        #expect(makefileSource.contains("scripts/verify-release-asset-source.sh"))
+        #expect(makefileSource.contains("destination=\"build/$${asset:t}\""))
+        #expect(prerequisites.contains("make dmg"))
+        #expect(prerequisites.contains("build/SayAll-<version>-<build>.dmg"))
         #expect(prerequisites.contains("sudo xcode-select"))
         #expect(prerequisites.contains("输入监控"))
         #expect(prerequisites.contains("辅助功能"))
