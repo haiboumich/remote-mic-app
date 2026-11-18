@@ -29,20 +29,23 @@ xcrun swift --version
 
 ## 从干净源码生成 DMG
 
-切到没有未提交或未跟踪文件的 checkout，执行：
+先提交并 Push 要打包的源码，切到没有未提交或未跟踪文件的 checkout，再执行统一入口：
 
 ```zsh
-./scripts/build-offline-dmg.sh native
+make dmg
 ```
 
-`native` 只生成当前 Mac 架构的产物。需要同时生成 Apple Silicon 和 Intel 两套产物时
-执行：
+默认只生成当前 Mac 架构的产物。需要同时生成 Apple Silicon 和 Intel 两套产物时执行：
 
 ```zsh
-./scripts/build-offline-dmg.sh all
+make dmg DMG_VARIANT=all
 ```
 
-脚本会先运行公开模式 self-test 和完整 Swift 测试，再从新的临时 SwiftPM
+也可将 `DMG_VARIANT` 设为 `apple-silicon` 或 `intel`。Makefile 会动态读取当前完整
+Git HEAD，调用 `scripts/build-offline-dmg.sh`，并在复制产物前再次验证 DMG 包内
+`SayAllSourceCommit` 与该 HEAD 完全一致；不使用手写 commit 文案。
+
+底层脚本会先运行公开模式 self-test 和完整 Swift 测试，再从新的临时 SwiftPM
 scratch/cache 构建 App；虚拟音频驱动也会从固定 BlackHole commit 重新构建。脚本强制
 使用 `SAYALL_PRIVATE_PLATFORM_MODE=public`、清除私有包和诊断配置，并在打包后校验
 DMG、Installer payload 与包内源码 commit。它不会读取已有 `.build`、已安装 App 或
@@ -50,12 +53,13 @@ DMG、Installer payload 与包内源码 commit。它不会读取已有 `.build`�
 
 输出位置：
 
-- Apple Silicon：`dist/SayAll-<version>-<build>.dmg`
-- Intel：`dist/intel/SayAll-<version>-<build>-Intel.dmg`
-- 同目录还会生成对应的 `.sha256` 文件、App、驱动和 Installer PKG。
+- `make dmg` 的最终交付物：`build/SayAll-<version>-<build>.dmg`
+- Intel：`build/SayAll-<version>-<build>-Intel.dmg`
+- `build/` 中同时生成对应的 `.sha256` 文件；该目录被 `.gitignore` 忽略。
+- `dist/` 继续保留底层 App、驱动、Installer PKG 和架构中间产物，供完整校验使用。
 
-脚本要求干净 checkout，是为了让 DMG 内记录的源码 commit 可复现。需要修改代码时，
-先完成测试并提交，再从该 commit 执行打包。
+入口要求干净 checkout，是为了让 DMG 内记录的源码 commit 可复现。需要修改代码时，
+先完成测试、提交并 Push，再从该 commit 执行 `make dmg`。
 
 本机真机联调时，可先安装刚构建出的虚拟音频驱动，不必等待 DMG：
 

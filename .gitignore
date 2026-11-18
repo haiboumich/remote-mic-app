@@ -3,6 +3,7 @@
 .build-private/
 .build-app-*/
 dist/
+build/
 .swiftpm/
 *.xcuserstate
 .DS_Store
